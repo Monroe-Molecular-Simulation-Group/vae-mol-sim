@@ -9,7 +9,7 @@ if "%SPHINXBUILD%" == "" (
 )
 set SOURCEDIR=.
 set BUILDDIR=_build
-set SPHINXPROJ=vae_mol_sim
+set SPHINXPROJ=vaemolsim
 
 if "%1" == "" goto help
 

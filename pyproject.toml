@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 # Self-descriptive entries which should always be present
 # https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
 [project]
-name = "vae_mol_sim"
+name = "vaemolsim"
 description = "A library of Tensorflow code facilitating the use of VAEs in molecular simulations"
 dynamic = ["version"]
 readme = "README.md"
@@ -26,8 +26,8 @@ requires-python = ">=3.8"
 
 # Update the urls once the hosting is set up.
 #[project.urls]
-#"Source" = "https://github.com/<username>/vae_mol_sim/"
-#"Documentation" = "https://vae_mol_sim.readthedocs.io/"
+#"Source" = "https://github.com/<username>/vae-mol-sim/"
+#"Documentation" = "https://vae-mol-sim.readthedocs.io/"
 
 [project.optional-dependencies]
 test = [
@@ -62,7 +62,7 @@ where = ["."]
 
 # Ref https://setuptools.pypa.io/en/latest/userguide/datafiles.html#package-data
 [tool.setuptools.package-data]
-vae_mol_sim = [
+vaemolsim = [
     "py.typed"
 ]
 
@@ -82,4 +82,4 @@ match = ["*"]
 default-tag = "1.0.0"
 
 [tool.versioningit.write]
-file = "vae_mol_sim/_version.py"
+file = "vaemolsim/_version.py"

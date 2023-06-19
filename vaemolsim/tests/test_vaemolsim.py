@@ -1,5 +1,5 @@
 """
-Unit and regression test for the vae_mol_sim package.
+Unit and regression test for the vaemolsim package.
 """
 
 # Import package, test suite, and other packages as needed
@@ -7,9 +7,9 @@ import sys
 
 import pytest
 
-import vae_mol_sim
+import vaemolsim
 
 
-def test_vae_mol_sim_imported():
+def test_vaemolsim_imported():
     """Sample test, will always pass so long as import statement worked."""
-    assert "vae_mol_sim" in sys.modules
+    assert "vaemolsim" in sys.modules

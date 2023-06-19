@@ -17,7 +17,7 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('..'))
 
-import vae_mol_sim
+import vaemolsim
 
 
 # -- Project information -----------------------------------------------------
@@ -117,7 +117,7 @@ html_static_path = ['_static']
 # -- Options for HTMLHelp output ---------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'vae_mol_simdoc'
+htmlhelp_basename = 'vaemolsimdoc'
 
 
 # -- Options for LaTeX output ------------------------------------------------
@@ -144,8 +144,8 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'vae_mol_sim.tex', 'VAE-Based Molecular Simulation Documentation',
-     'vae_mol_sim', 'manual'),
+    (master_doc, 'vaemolsim.tex', 'VAE-Based Molecular Simulation Documentation',
+     'vaemolsim', 'manual'),
 ]
 
 
@@ -154,7 +154,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'vae_mol_sim', 'VAE-Based Molecular Simulation Documentation',
+    (master_doc, 'vaemolsim', 'VAE-Based Molecular Simulation Documentation',
      [author], 1)
 ]
 
@@ -165,8 +165,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'vae_mol_sim', 'VAE-Based Molecular Simulation Documentation',
-     author, 'vae_mol_sim', 'A library of Tensorflow code facilitating the use of VAEs in molecular simulations',
+    (master_doc, 'vaemolsim', 'VAE-Based Molecular Simulation Documentation',
+     author, 'vaemolsim', 'A library of Tensorflow code facilitating the use of VAEs in molecular simulations',
      'Miscellaneous'),
 ]
 

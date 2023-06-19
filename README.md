@@ -1,7 +1,7 @@
 VAE-Based Molecular Simulation
 ==============================
 [//]: # (Badges)
-[![GitHub Actions Build Status](https://github.com/REPLACE_WITH_OWNER_ACCOUNT/vae_mol_sim/workflows/CI/badge.svg)](https://github.com/REPLACE_WITH_OWNER_ACCOUNT/vae_mol_sim/actions?query=workflow%3ACI)
+[![GitHub Actions Build Status](https://github.com/REPLACE_WITH_OWNER_ACCOUNT/vae-mol-sim/workflows/CI/badge.svg)](https://github.com/REPLACE_WITH_OWNER_ACCOUNT/vae-mol-sim/actions?query=workflow%3ACI)
 [![codecov](https://codecov.io/gh/REPLACE_WITH_OWNER_ACCOUNT/VAE-Based Molecular Simulation/branch/main/graph/badge.svg)](https://codecov.io/gh/REPLACE_WITH_OWNER_ACCOUNT/VAE-Based Molecular Simulation/branch/main)
 
 
