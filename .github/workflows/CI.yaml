@@ -54,7 +54,7 @@ jobs:
         # conda setup requires this special shell
         shell: bash -l {0}
         run: |
-          pytest -v --cov=vae_mol_sim --cov-report=xml --color=yes vae_mol_sim/tests/
+          pytest -v --cov=vaemolsim --cov-report=xml --color=yes vaemolsim/tests/
 
       - name: CodeCov
         uses: codecov/codecov-action@v1
