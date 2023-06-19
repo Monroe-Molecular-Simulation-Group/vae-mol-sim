@@ -4,7 +4,7 @@
    contain the root `toctree` directive.
 
 Welcome to VAE-Based Molecular Simulation's documentation!
-=========================================================
+==========================================================
 
 .. toctree::
    :maxdepth: 2
