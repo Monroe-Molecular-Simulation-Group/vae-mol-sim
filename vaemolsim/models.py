@@ -12,8 +12,7 @@ VAE models.
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-import mappings
-import losses
+from . import mappings, losses
 
 
 # If reconfigure this right, can allow mappings that include a masking and embedding...

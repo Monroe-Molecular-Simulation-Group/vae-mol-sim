@@ -4,4 +4,8 @@ API Documentation
 .. autosummary::
    :toctree: autosummary
 
-   vaemolsim.canvas
+   vaemolsim.flows
+   vaemolsim.dists
+   vaemolsim.losses
+   vaemolsim.mappings
+   vaemolsim.models

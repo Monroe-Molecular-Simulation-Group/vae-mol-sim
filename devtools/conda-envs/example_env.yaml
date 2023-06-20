@@ -7,7 +7,7 @@ channels:
   - conda-forge
 
 dependencies:
-  - python
+  - python<=3.10
   - numpy
   - scipy
   - matplotlib
@@ -20,19 +20,20 @@ dependencies:
   - openmm
   - openmmtools
   - mdtraj
-  - sphinx
+  - sphinx<7.0
+  - sphinx_rtd_theme
   - pip
-  - pip:
-      - tensorflow
-      - tensorflow-probability
-      - geometric-algebra-attention
+#  - pip:
+#      - tensorflow
+#      - tensorflow-probability
+#      - geometric-algebra-attention
 
 # On an M2 mac, need to comment out the pip install tensorflow and tensorflow-probability sections
 # Then follow these steps:
-#   conda env create -n vae-mol-sim python
+#   conda create -n vae-mol-sim python=3.10
 #   conda activate vae-mol-sim
 #   conda install -c apple tensorflow-deps
-#   conda env update -n vae-mol-sim --file env.yml --prune
+#   conda env update -n vae-mol-sim --file example_env.yaml --prune
 #   pip install tensorflow-macos
 #   pip install tensorflow-metal
 #   pip install tensorflow-probability
