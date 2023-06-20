@@ -1,3 +1,9 @@
+"""
+Defines normalizing flows based on tensorflow-probability bijectors.
+All classes inherit from tf.keras.layers.Layer, except for a single
+tf.keras.Model class defined here for convenience of training only
+normalizing flows.
+"""
 
 import tensorflow as tf
 import tensorflow_probability as tfp

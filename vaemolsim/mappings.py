@@ -1,3 +1,14 @@
+"""
+Defines keras layers (all classes subclass tf.keras.layers.Layer) classes
+that define coordinate transformations or mappings between representations
+of data. In the simplest case, this is just a fully-connected, deep neural
+network, though added features are presented to handle periodic degrees of
+freedom, which arise naturally in molecular systems. Other examples include
+dealing with mappings to coarse-grained coordinates, as well as applying
+distance-based masks and subsequently local embeddings based on geometric
+algebra.
+"""
+
 
 import numpy as np
 import tensorflow as tf

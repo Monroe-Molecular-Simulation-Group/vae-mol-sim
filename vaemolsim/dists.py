@@ -1,3 +1,15 @@
+"""
+Defines tf.keras.layers.Layer subclasses that represent probability distributions.
+Specifically, when these layers are called with provided inputs, the output is a
+tensorflow-probability distribution class object.
+In the simplest cases, these are extensions of tensorflow-probability layers, such
+as a layer representing independent von Mises distributions. In some cases, however,
+the core layer class of the layers module of tensorflow-probability, DistributionLambda,
+cannot be subclassed, and so custom layers have been created for those cases. This
+includes wrapping independent Blockwise distributions, as well as Autoregressive
+and flowed distributions.
+"""
+
 # Mostly creates layers that represent probability distributions
 # If just want distributions, can do that with tfp
 # Or by creating one of these layers and calling it
@@ -14,6 +26,12 @@ import tensorflow_probability as tfp
 
 from tensorflow_probability.python.internal import distribution_util as dist_util
 
+
+# This probably should not be a class...
+# Really need a function to generate the transformations and that's it,
+# which is essentially the __init__ method of this class.
+# Making this a class just complicates things since we are really truly just wrapping a function
+# that we create.
 class ParamTransform(object):
   """
   Defines a function to transform inputs into parameters on a domain appropriate to a distribution.

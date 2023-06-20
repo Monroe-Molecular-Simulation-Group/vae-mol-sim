@@ -1,3 +1,11 @@
+"""
+Defines VAE (or partial VAE, like just the encoder or decoder) models.
+For convenience, a layer class is also defined that combines a mapping
+with a distribution-creation layer. This is the common structure of
+both encoders and decoders, which then streamlines the creation of
+VAE models.
+"""
+
 #Put overall models here
 #As in, the full VAE
 
@@ -37,6 +45,7 @@ class MappingToDistribution(tf.keras.layers.Layer):
     self.distribution = distribution
     
     #Check if distribution takes conditional inputs
+    #Seems a little clunky to have to have a conditional attribute and read it here...
     try:
       self.conditional = self.distribution.conditional
     except AttributeError:
@@ -52,6 +61,9 @@ class MappingToDistribution(tf.keras.layers.Layer):
       self.mapping = mapping
 
   def call(self, inputs, training=False):
+    #Note that mapping takes same inputs as conditional_inputs...
+    #Hard to handle situations that need more flexibility, though, especially if inputs is a list
+    #But think about how to make more general so can accomodate things like the distance-based masking
     mapped = self.mapping(inputs, training=training)
     if self.conditional:
       return self.distribution(mapped, training=training, conditional_input=inputs)

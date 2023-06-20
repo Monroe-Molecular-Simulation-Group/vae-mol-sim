@@ -1,3 +1,15 @@
+"""
+Various losses that are helpful for training VAEs.
+There are two main types:
+1) reconstruction losses based on the output decoder probability distribution,
+   usually taking the form of a log-probability of that distribution
+2) regularization losses that penalize distance of a variational encoding distribution
+   from a prior distribution, usually taking the form of a KL-divergence loss
+More complicated scenarios can also arise, such as requring the potential energy
+when training a normalizing flow or VAE in "reverse," which is why so many
+loss options appear here.
+"""
+
 
 import tensorflow as tf
 
