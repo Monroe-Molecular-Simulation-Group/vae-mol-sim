@@ -1,13 +1,14 @@
 name: test
-channels:
 
+channels:
   - conda-forge
 
-  - defaults
 dependencies:
+
     # Base depends
   - python
   - pip
+  - numpy
 
     # Testing
   - pytest
@@ -15,5 +16,7 @@ dependencies:
   - codecov
 
     # Pip-only installs
-  #- pip:
-  #  - codecov
+  - pip:
+    - tensorflow
+    - tensorflow-probability
+    - geometric-algebra-attention

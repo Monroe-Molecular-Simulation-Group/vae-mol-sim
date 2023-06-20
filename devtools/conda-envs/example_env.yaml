@@ -1,0 +1,39 @@
+# An example working environment recommended for projects using this package
+# This file is used to set up environments for the example notebooks and scripts
+# See test_env.yaml for bare-bones dependencies to only run and test the core code
+name: vae-mol-sim
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python
+  - numpy
+  - scipy
+  - matplotlib
+  - netcdf4
+  - jupyter
+  - jupyterlab
+  - ipykernel
+  - ipywidgets=7
+  - nglview
+  - openmm
+  - openmmtools
+  - mdtraj
+  - sphinx
+  - pip
+  - pip:
+      - tensorflow
+      - tensorflow-probability
+      - geometric-algebra-attention
+
+# On an M2 mac, need to comment out the pip install tensorflow and tensorflow-probability sections
+# Then follow these steps:
+#   conda env create -n vae-mol-sim python
+#   conda activate vae-mol-sim
+#   conda install -c apple tensorflow-deps
+#   conda env update -n vae-mol-sim --file env.yml --prune
+#   pip install tensorflow-macos
+#   pip install tensorflow-metal
+#   pip install tensorflow-probability
+#   pip install geometric-algebra-attention
