@@ -9,6 +9,12 @@
 
 
 
+   .. rubric:: Functions
+
+   .. autosummary::
+
+      make_param_transform
+
 
 
 
@@ -23,5 +29,4 @@
       IndependentDeterministic
       IndependentVonMises
       JointDistribution
-      ParamTransform
       StaticFlowedDistribution

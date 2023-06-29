@@ -33,7 +33,7 @@ from tensorflow_probability.python.internal import distribution_util as dist_uti
 # which is essentially the __init__ method of this class.
 # Making this a class just complicates things since we are really truly just wrapping a function
 # that we create.
-def make_param_transform(dist_class=None, transform_fn=tf.Identity):
+def make_param_transform(dist_class=None, transform_fn=tf.identity):
     """
   A function to create functions that transform inputs into parameters on a domain appropriate to a distribution.
 
@@ -43,7 +43,7 @@ def make_param_transform(dist_class=None, transform_fn=tf.Identity):
   If the default transformations in the parameter_properties attribute of the distribution class
   are not what is desired, you can instead pass an explicit callable (likely a lambda function)
   to transform to parameters. If neither a distribution class nor a callable is provided,
-  the default behavior is to set the transformation function to tf.Identity.
+  the default behavior is to set the transformation function to tf.identity.
   The output of a call to an object of this class should be a dictionary with the keys being the
   names of distribution parameters and the values being the transformed values.
   The input should just be a list, array, tensor, etc. of the untransformed values.
@@ -52,7 +52,7 @@ def make_param_transform(dist_class=None, transform_fn=tf.Identity):
   ----------
   dist_class : tfp.distributions class, default None
       A class within tfp.distributions with the attribute parameter_properties
-  transform_fn : callable, default tf.Identity
+  transform_fn : callable, default tf.identity
       A callable to define the transformation
 
   Returns
@@ -180,7 +180,7 @@ class IndependentBlockwise(tf.keras.layers.Layer):
             self.param_transforms = [make_param_transform(dist_class=d) for d in self.dist_classes]
         else:
             if not isinstance(param_transforms, (list, tuple)):
-                self.param_transforms = [tf.Identity] * self.num_dofs
+                self.param_transforms = [tf.identity] * self.num_dofs
             else:
                 if len(param_transforms) != self.num_dofs:
                     raise ValueError(
@@ -243,7 +243,7 @@ class AutoregressiveBlockwise(IndependentBlockwise):
 
   Specifically, this is a tfp.distribution.Autoregressive distribution whose distribution_fn argument
   is a function that produces a tfp.distribution.Blockwise distribution instance.
-  Note that we cannot inherit from DistributionLambd - must inherit from keras Layer directly.
+  Note that we cannot inherit from DistributionLambda - must inherit from keras Layer directly.
   Doing this allows for owning of the autoregressive network parameters, and for conditional inputs.
   Note that means this layer ONLY produces a distribution object - for sampling, must call sample from distribution.
   """
