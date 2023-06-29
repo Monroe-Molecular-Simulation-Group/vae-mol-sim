@@ -1,5 +1,6 @@
 """
 Defines tf.keras.layers.Layer subclasses that represent probability distributions.
+
 Specifically, when these layers are called with provided inputs, the output is a
 tensorflow-probability distribution class object.
 In the simplest cases, these are extensions of tensorflow-probability layers, such
@@ -32,9 +33,10 @@ from tensorflow_probability.python.internal import distribution_util as dist_uti
 # which is essentially the __init__ method of this class.
 # Making this a class just complicates things since we are really truly just wrapping a function
 # that we create.
-class ParamTransform(object):
+def make_param_transform(dist_class=None, transform_fn=tf.Identity):
     """
-  Defines a function to transform inputs into parameters on a domain appropriate to a distribution.
+  A function to create functions that transform inputs into parameters on a domain appropriate to a distribution.
+
   By default, a tfp.distribution class, if provided, is used to construct the transformation, with an exception
   for von Mises already applied so that 2 parameters are taken for the location and treated as a
   sine-cosine pair that is transformed into the domain [-np.pi, np.pi], which helps training.
@@ -45,45 +47,45 @@ class ParamTransform(object):
   The output of a call to an object of this class should be a dictionary with the keys being the
   names of distribution parameters and the values being the transformed values.
   The input should just be a list, array, tensor, etc. of the untransformed values.
+
+  Parameters
+  ----------
+  dist_class : tfp.distributions class, default None
+      A class within tfp.distributions with the attribute parameter_properties
+  transform_fn : callable, default tf.Identity
+      A callable to define the transformation
+
+  Returns
+  -------
+  param_transform : function
+      The callable transformation function
   """
+    if dist_class is not None:
+        props_dict = dist_class.parameter_properties()
 
-    def __init__(self, dist_class=None, transform_fn=lambda x: tf.Identity(x)):
-        """
-    Inputs:
-        dist_class - (tfp.distributions class, None) a class within tfp.distributions with the attribute
-                     parameter_properties
-        transform_fn - (callable, lambda x: tf.Identity(x)) a callable to define the transformation
-    Outputs:
-        ParamTransform object
-    """
-        if dist_class is not None:
-            props_dict = dist_class.parameter_properties()
+        # Define in special way for von Mises to wrap into periodic interval
+        if dist_class.__name__ == 'VonMises':
 
-            # Define in special way for von Mises to wrap into periodic interval
-            if dist_class.__name__ == 'VonMises':
-
-                def _fn(x):
-                    return {
-                        'loc':
-                        props_dict['loc'].default_constraining_bijector_fn()(tf.math.atan2(x[..., 0], x[..., 1])),
-                        'concentration': props_dict['concentration'].default_constraining_bijector_fn()(x[..., 2])
-                    }
-
-            else:
-
-                def _fn(x):
-                    return {
-                        k: props_dict[k].default_constraining_bijector_fn()(x[..., i])
-                        for (i, k) in enumerate(props_dict.keys())
-                    }
-
-            self.transform = _fn
+            def _fn(x):
+                return {
+                    'loc': props_dict['loc'].default_constraining_bijector_fn()(tf.math.atan2(x[..., 0], x[..., 1])),
+                    'concentration': props_dict['concentration'].default_constraining_bijector_fn()(x[..., 2])
+                }
 
         else:
-            self.transform = transform_fn
 
-    def __call__(self, inputs):
-        return self.transform(inputs)
+            def _fn(x):
+                return {
+                    k: props_dict[k].default_constraining_bijector_fn()(x[..., i])
+                    for (i, k) in enumerate(props_dict.keys())
+                }
+
+        param_transform = _fn
+
+    else:
+        param_transform = transform_fn
+
+    return param_transform
 
 
 # Turns out inheriting from DistributionLambda does not work for autoregression or flows
@@ -96,7 +98,9 @@ class ParamTransform(object):
 class IndependentBlockwise(tf.keras.layers.Layer):
     """
   A layer to create a Blockwise distribution of independent, arbitrary tfp.distribution classes.
-  Follows style of other independent distribution layers in tfp, but inherits from keras for simplicity.
+
+  This class follows the style of other independent distribution layers in tfp.
+  However, it inherits directly from tf.keras.layers.Layer for simplicity.
   """
 
     def __init__(
@@ -109,22 +113,30 @@ class IndependentBlockwise(tf.keras.layers.Layer):
         **kwargs,
     ):
         """
-    Inputs:
-        num_dofs - (int) number of degrees of freedom or dimensionality of distribution (i.e., event_shape)
-        dist_classes - (tfp.distribution class or list) list of tfp.distribution classes for probability on
-                       each degree of freedom; if just a single distribution class, it will be used for all dofs
-        param_nums - (int or list of ints, None) list of integers specifying the number of parameters to pass to each
-                     distribution in dist_classes for its creation; if a single integer, uses for all distributions;
-                     this is necessary because one cannot ALWAYS infer the number of parameters from the distribution;
-                     if left as None, the default, the number of parameters will be inferred from the classes in
-                     dist_classes
-        param_transforms - (callable or list of callables, tf.Identity) should be a callable function or list of
-                           callable functions with a single callable function for each dof that expects to transform
-                           param_nums[i] inputs for the ith dof distribution; if left as None (the default), will
-                           infer transformations from dist_classes using the parameter_properties attribute and
-                           wrapping with a callable ParamTransform class
-    Outputs:
-        IndependentBlockwise distribution layer
+    Creates IndependentBlockwise layer
+
+    Parameters
+    ----------
+    num_dofs : int
+        Number of degrees of freedom or dimensionality of distribution (i.e., event_shape)
+    dist_classes : tfp.distribution class or list
+        List of tfp.distribution classes for probability on each degree of freedom.
+        If just a single distribution class, it will be used for all dofs.
+    param_nums : int or list of ints, default None
+        List of integers specifying the number of parameters to pass to each distribution
+        in dist_classes for its creation; if a single integer, uses for all distributions.
+        Necessary because one cannot ALWAYS infer the number of parameters from the distribution.
+        If left as None, the default, the number of parameters will be inferred from the classes
+        in dist_classes.
+    param_transforms : callable or list of callables, default None
+        Should be a callable function or list of callable functions with a single callable function
+        for each dof that expects to transform param_nums[i] inputs for the ith dof distribution.
+        If left as None (the default), will infer transformations from dist_classes using the
+        parameter_properties attribute.
+
+    Returns
+    -------
+    IndependentBlockwise distribution layer instance
     """
         super(IndependentBlockwise, self).__init__(name=name, **kwargs)
 
@@ -165,10 +177,10 @@ class IndependentBlockwise(tf.keras.layers.Layer):
 
         # Check and specify param_transforms
         if param_transforms is None:
-            self.param_transforms = [ParamTransform(d) for d in self.dist_classes]
+            self.param_transforms = [make_param_transform(dist_class=d) for d in self.dist_classes]
         else:
             if not isinstance(param_transforms, (list, tuple)):
-                self.param_transforms = [tfp.bijectors.Identity()] * self.num_dofs
+                self.param_transforms = [tf.Identity] * self.num_dofs
             else:
                 if len(param_transforms) != self.num_dofs:
                     raise ValueError(
@@ -178,11 +190,16 @@ class IndependentBlockwise(tf.keras.layers.Layer):
 
     def call(self, inputs):
         """
-    A utility function to create a Blockwise distribution from an input tensor
-    Inputs:
-        inputs - (tensor) the input to this layer
-    Outputs:
-        tfp.distributions.Blockwise object
+    Creates a Blockwise distribution from an input tensor.
+
+    Parameters
+    ----------
+    inputs : tf.Tensor
+        The input to this layer
+
+    Returns
+    -------
+    tfp.distributions.Blockwise class instance
     """
         params = tf.split(inputs, self.param_nums, axis=-1)
         # Loop over distribution classes and parameters, creating list of distribution objects
@@ -195,7 +212,17 @@ class IndependentBlockwise(tf.keras.layers.Layer):
 
     def params_size(self):
         """
-    Returns the total number of parameters, which is useful for specifying the output of layers before this one.
+    Outputs the total number of parameters,
+
+    This is useful for specifying the output of layers before this one.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    Total number of parameters
     """
         return sum(self.param_nums)
 
@@ -212,9 +239,11 @@ class IndependentBlockwise(tf.keras.layers.Layer):
 
 class AutoregressiveBlockwise(IndependentBlockwise):
     """
-  A layer based on an autoregressive distribution (tfp.distributions.Autoregressive) that is composed of
-  tfp.distribution class object composed through a tfp.distributions.Blockwise distribution.
-  Note that here, cannot use DistributionLambda, must use inherit from keras Layer.
+  A layer based on an autoregressive distribution composed through a blockwise distribution.
+
+  Specifically, this is a tfp.distribution.Autoregressive distribution whose distribution_fn argument
+  is a function that produces a tfp.distribution.Blockwise distribution instance.
+  Note that we cannot inherit from DistributionLambd - must inherit from keras Layer directly.
   Doing this allows for owning of the autoregressive network parameters, and for conditional inputs.
   Note that means this layer ONLY produces a distribution object - for sampling, must call sample from distribution.
   """
@@ -228,12 +257,20 @@ class AutoregressiveBlockwise(IndependentBlockwise):
         **kwargs,
     ):
         """
-    Inputs:
-        See IndependentBlockwise for most arguments
-        conditional - (bool, False) whether or not to use conditional inputs in autoregressive network
-        conditional_event_shape - (int or tuple) shape of conditional inputs (excluding batch dimensions)
-    Outputs:
-        AutoregressiveBlockwise distribution layer
+    Creates AutoregressiveBlockise layer
+
+    See IndependentBlockwise for most arguments.
+
+    Parameters
+    ----------
+    conditional : bool, default False
+        Whether or not to use conditional inputs in autoregressive network
+    conditional_event_shape : int or tuple, default None
+        Shape of conditional inputs (excluding batch dimensions). Necessary if conditional is True.
+
+    Returns
+    -------
+    AutoregressiveBlockwise distribution layer instance
     """
         super(AutoregressiveBlockwise, self).__init__(*args, name=name, **kwargs)
 
@@ -258,11 +295,17 @@ class AutoregressiveBlockwise(IndependentBlockwise):
     def call(self, inputs, conditional_input=None):
         """
     Creates and returns an Autoregressive blockwise distribution from an input tensor
-    Inputs:
-        inputs - (tensor) the input to this layer
-        conditional_input - (tensor) conditional input
-    Outputs:
-        tfp.distributions.Autoregressive object
+
+    Parameters
+    ----------
+    inputs : tf.Tensor
+        The input to this layer
+    conditional_input : tf.Tensor
+        Conditional input
+
+    Returns
+    -------
+    tfp.distributions.Autoregressive instance
     """
 
         # First, need to create a function that creates our distribution
@@ -286,8 +329,19 @@ class AutoregressiveBlockwise(IndependentBlockwise):
 
     def params_size(self):
         """
-    Returns the shape of the autoregressive netowrk output, which should be the output size of a layer before this one.
-    This output is the number of dofs by the number of parameters.
+    Returns the shape of the autoregressive netowrk output.
+
+    This should be the output size of a layer before this one.
+    This is the number of dofs by the number of parameters.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    tuple
+        (N_dofs, N_params)
     """
         return (self.num_dofs, max(self.param_nums))
 
@@ -300,29 +354,36 @@ class AutoregressiveBlockwise(IndependentBlockwise):
         return config
 
 
-# Worked fine except for passing conditional inputs...
-# keras lambda layers only seem to work with fixed keyword arguments
-# that's fine, though... we can just reproduce the key aspects of DistributionLambda here as full keras Layer
 class FlowedDistribution(tf.keras.layers.Layer):
     """
   A layer that creates a TransformedDistribution based on a flow.
+
   Essentially just wraps a distribution layer and a flow layer into one for convenience.
   Unfortunately, we cannot inherit from DistributionLambda because within a tf.keras.layers.Lambda
   layer, it is not possible to dynamically pass keyword arguments, which prevents us from
   passing conditional_input (applicable to an MAF bijector).
-  Unlike the other distribution layers, this ONLY produces a distribution, with no concretization.
+  As such, this ONLY produces a distribution, with no concretization.
   That means that sampling must be done manually within a custom Model if that is necessary.
   """
 
     def __init__(self, flow, latent_dist, name='flowed_dist', **kwargs):
         """
-    Inputs:
-        flow - a layer that, in its call method, takes a distribution as input and outputs a
-               tfp.distributions.TransformedDistribution object by applying a bijector; intended
-               to utilize one of the flows in flows.py, such as RQSSplineRealNVP or RQSSplineMAF
-        latent_dist - a layer representing a distribution to be transformed
-    Outputs:
-        FlowedDistribution layer
+    Creates a FlowedDistribution class instance.
+
+    Parameters
+    ----------
+    flow : tf keras layer
+        A layer that, in its call method, takes a distribution as input and outputs a
+        tfp.distributions.TransformedDistribution object by applying a bijector.
+        Intended to utilize one of the flows in vaemolsim.flows, such as RQSSplineRealNVP
+        or RQSSplineMAF.
+    latent_dist : tfp.layers-like instance
+        A layer representing a distribution to be transformed (i.e., a layer that, given
+        inputs, produces a tfp.distributions object)
+
+    Returns
+    -------
+    FlowedDistribution layer instance
     """
         super(FlowedDistribution, self).__init__(name=name, **kwargs)
 
@@ -332,11 +393,26 @@ class FlowedDistribution(tf.keras.layers.Layer):
 
     def call(self, inputs, training=False, **kwargs):
         """
+    Produces a tfp.distributions.TransformedDistribution object from inputs.
+
     Applies transformation by creating starting distribution given inputs (from last layer), then
     using flow to produce a TransformedDistribution object.
     Note that kwargs is accepted and will be passed on to the flow to allow passing conditional_input.
     It is not hard-coded as conditional input, though, because some flows, like RealNVP do not take
     conditional_input as an argument.
+
+    Parameters
+    ----------
+    inputs : tf.Tensor
+        Input to this layer
+    training : bool, default False
+        Whether or not training or making predictions; applicable if have batch normalization layers
+    **kwargs : other keyword arguments
+        Necessary to capture conditional_input if provided and pass to flow
+
+    Returns
+    -------
+    tfp.distributions.TransformedDistribution instance
     """
         start_dist = self.latent_dist(inputs)
         # Passing kwargs necessary to capture conditional_input if provided
@@ -345,6 +421,15 @@ class FlowedDistribution(tf.keras.layers.Layer):
     def params_size(self):
         """
     Returns parameter size for distribution layer feeding into the flow.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    tuple
+        Size of parameters needed for inputs to the distribution to be transformed
     """
         return self.latent_dist.params_size()
 
@@ -363,8 +448,9 @@ class FlowedDistribution(tf.keras.layers.Layer):
 # Both are equivalent, just packaged differently
 class StaticFlowedDistribution(tf.keras.layers.Layer):
     """
-  Similar to FlowedDistribution, but takes a static tfp.distributions object as the
-  starting point. Using this to produce TransformedDistribution objects rather than
+  Similar to FlowedDistribution, but takes a static tfp.distributions object as the starting point.
+
+  Using this to produce TransformedDistribution objects rather than
   just creating a TransformedDistribution object allows for bijectors (flows) that
   have different behavior with/without training, as is the case when batch norm
   bijectors are added between flow blocks. This is mainly relevant to creating prior
@@ -373,13 +459,20 @@ class StaticFlowedDistribution(tf.keras.layers.Layer):
 
     def __init__(self, flow, latent_dist, name='static_flowed_dist', **kwargs):
         """
-    Inputs:
-        flow - a layer that, in its call method, takes a distribution as input and outputs a
-               tfp.distributions.TransformedDistribution object by applying a bijector; intended
-               to utilize one of the flows in flows.py, such as RQSSplineRealNVP or RQSSplineMAF
-        latent_dist - a tfp.distribution object representing a distribution to be transformed
-    Outputs:
-        StaticFlowedDistribution layer
+    Creates a StaticFlowedDistribution layer
+
+    Parameters
+    ----------
+    flow : tf keras layer
+        A layer that, in its call method, takes a distribution as input and outputs a
+        tfp.distributions.TransformedDistribution object by applying a bijector.
+        Intended to utilize one of the flows in vaemolsim.flows, such as RQSSplineRealNVP or RQSSplineMAF
+    latent_dist : tfp.distribution
+        A tfp.distribution object representing a distribution to be transformed
+
+    Returns
+    -------
+    StaticFlowedDistribution layer instance
     """
         super(StaticFlowedDistribution, self).__init__(name=name, **kwargs)
 
@@ -388,8 +481,18 @@ class StaticFlowedDistribution(tf.keras.layers.Layer):
 
     def __call__(self, inputs, training=False):
         """
+    Produces a tfp.distributions.TransformedDistribution object.
+
     Note that this function will ignore inputs since latent distribution is static. It does, however
     take a training keyword argument that will be passed to the flow.
+
+    Parameters
+    ----------
+    inputs : N/A
+        Will be ignored
+    training : bool, default False
+        Whether or not we are training or making predictions.
+        Applicable if have block normalization layers in flow.
     """
         # Passing kwargs necessary to capture conditional_input if provided
         return self.flow(self.latent_dist, training=training)
@@ -620,6 +723,8 @@ class IndependentDeterministic(tfp.layers.DistributionLambda):
 # than stashing them and slicing
 class JointDistribution(tf.keras.layers.Layer):
     """
+  WORK IN PROGRESS
+
   A distribution composed of a series of distributions based on a repeatedly applied function that
   takes the outputs of all previous distributions and uses them to parametrize the next distribution.
 
