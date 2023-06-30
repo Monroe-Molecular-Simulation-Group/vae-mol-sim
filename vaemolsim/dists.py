@@ -11,15 +11,6 @@ includes wrapping independent Blockwise distributions, as well as Autoregressive
 and flowed distributions.
 """
 
-# Mostly creates layers that represent probability distributions
-# If just want distributions, can do that with tfp
-# Or by creating one of these layers and calling it
-# Essentially, for something like a prior, can just create a tfp distribution object
-# (for one with a normalizing flow, use the bijectors or flow layers in flows.py, BUT
-# if you want multiple blocks with batch normalization anywhere, you will actually need
-# a function to GENERATE TransformedDistribution objects with training on the batch norm
-# blocks set the right way, so will want to use one of the layers in flows.py for sure)
-
 import numpy as np
 
 import tensorflow as tf
@@ -101,6 +92,17 @@ class IndependentBlockwise(tf.keras.layers.Layer):
 
   This class follows the style of other independent distribution layers in tfp.
   However, it inherits directly from tf.keras.layers.Layer for simplicity.
+
+  Attributes
+  ----------
+  num_dofs : int
+      Number of degrees of freedom or dimensionality of distribution
+  dist_classes : list
+      List of tfp.distribution classes for probability on each degree of freedom.
+  param_nums : list
+      List of number of parameters for each distribution in dist_classes.
+  param_transforms : list
+      List of transformations to map input parameters to distribution parameters.
   """
 
     def __init__(
@@ -113,7 +115,7 @@ class IndependentBlockwise(tf.keras.layers.Layer):
         **kwargs,
     ):
         """
-    Creates IndependentBlockwise layer
+    Creates IndependentBlockwise layer instance
 
     Parameters
     ----------
@@ -133,10 +135,6 @@ class IndependentBlockwise(tf.keras.layers.Layer):
         for each dof that expects to transform param_nums[i] inputs for the ith dof distribution.
         If left as None (the default), will infer transformations from dist_classes using the
         parameter_properties attribute.
-
-    Returns
-    -------
-    IndependentBlockwise distribution layer instance
     """
         super(IndependentBlockwise, self).__init__(name=name, **kwargs)
 
@@ -246,6 +244,13 @@ class AutoregressiveBlockwise(IndependentBlockwise):
   Note that we cannot inherit from DistributionLambda - must inherit from keras Layer directly.
   Doing this allows for owning of the autoregressive network parameters, and for conditional inputs.
   Note that means this layer ONLY produces a distribution object - for sampling, must call sample from distribution.
+
+  Attributes
+  ----------
+  conditional : bool
+    Whether or not conditional inputs will be used.
+  conditional_event_shape : int or tuple
+    Shape of conditional inputs if conditional is True.
   """
 
     def __init__(
@@ -257,7 +262,7 @@ class AutoregressiveBlockwise(IndependentBlockwise):
         **kwargs,
     ):
         """
-    Creates AutoregressiveBlockise layer
+    Creates AutoregressiveBlockwise layer
 
     See IndependentBlockwise for most arguments.
 
@@ -267,10 +272,6 @@ class AutoregressiveBlockwise(IndependentBlockwise):
         Whether or not to use conditional inputs in autoregressive network
     conditional_event_shape : int or tuple, default None
         Shape of conditional inputs (excluding batch dimensions). Necessary if conditional is True.
-
-    Returns
-    -------
-    AutoregressiveBlockwise distribution layer instance
     """
         super(AutoregressiveBlockwise, self).__init__(*args, name=name, **kwargs)
 
@@ -364,6 +365,18 @@ class FlowedDistribution(tf.keras.layers.Layer):
   passing conditional_input (applicable to an MAF bijector).
   As such, this ONLY produces a distribution, with no concretization.
   That means that sampling must be done manually within a custom Model if that is necessary.
+
+  Attributes
+  ----------
+  flow : layer
+    A layer that takes inputs and produces transformed (flowed) outputs or
+    that transforms a tfp.distributions object.
+  latent_dist : layer
+    A layer that takes inputs and produces a tfp.distributions object. Just
+    providing a tfp.distriutions object is not suitable because a callable
+    allows for batch normalization layers which provide more flexibility.
+  conditional : layer
+    Whether or not the flow accepts conditional inputs.
   """
 
     def __init__(self, flow, latent_dist, name='flowed_dist', **kwargs):
@@ -380,10 +393,6 @@ class FlowedDistribution(tf.keras.layers.Layer):
     latent_dist : tfp.layers-like instance
         A layer representing a distribution to be transformed (i.e., a layer that, given
         inputs, produces a tfp.distributions object)
-
-    Returns
-    -------
-    FlowedDistribution layer instance
     """
         super(FlowedDistribution, self).__init__(name=name, **kwargs)
 
@@ -455,6 +464,14 @@ class StaticFlowedDistribution(tf.keras.layers.Layer):
   have different behavior with/without training, as is the case when batch norm
   bijectors are added between flow blocks. This is mainly relevant to creating prior
   distributions.
+
+  Attributes
+  ----------
+  flow : layer
+    A layer that takes inputs and produces transformed (flowed) outputs or
+    that transforms a tfp.distributions object.
+  latent_dist : tfp.distribution object
+    A static tfp.distributions object (not a layer that produces one).
   """
 
     def __init__(self, flow, latent_dist, name='static_flowed_dist', **kwargs):
@@ -469,10 +486,6 @@ class StaticFlowedDistribution(tf.keras.layers.Layer):
         Intended to utilize one of the flows in vaemolsim.flows, such as RQSSplineRealNVP or RQSSplineMAF
     latent_dist : tfp.distribution
         A tfp.distribution object representing a distribution to be transformed
-
-    Returns
-    -------
-    StaticFlowedDistribution layer instance
     """
         super(StaticFlowedDistribution, self).__init__(name=name, **kwargs)
 
@@ -517,7 +530,6 @@ class IndependentVonMises(tfp.layers.DistributionLambda):
   That is because atan2 will be applied to the first two arguments to interpret them as a
   sine-cosine pair for the location, which neatly wraps it into the domain [-pi, pi].
   This should help avoid degeneracies during training.
-
   """
 
     def __init__(self,

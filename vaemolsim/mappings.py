@@ -1,12 +1,12 @@
 """
-Defines keras layers (all classes subclass tf.keras.layers.Layer) classes
-that define coordinate transformations or mappings between representations
-of data. In the simplest case, this is just a fully-connected, deep neural
-network, though added features are presented to handle periodic degrees of
-freedom, which arise naturally in molecular systems. Other examples include
-dealing with mappings to coarse-grained coordinates, as well as applying
-distance-based masks and subsequently local embeddings based on geometric
-algebra.
+Defines layers that perform coordinate transformations or mappings between data representations.
+
+All classes subclass tf.keras.layers.Layer. In the simplest case, the mapping
+is just a fully-connected, deep neural network, though added features are
+presented to handle periodic degrees of freedom, which arise naturally in
+molecular systems. Other examples include dealing with mappings to
+coarse-grained coordinates, as well as applying distance-based masks and
+subsequently local embeddings based on geometric algebra.
 """
 
 import numpy as np
@@ -14,17 +14,11 @@ import tensorflow as tf
 
 from geometric_algebra_attention import keras as gaa_keras
 
-# Transformations via neural networks, etc.
-# Can have some for encoders, some for decoders
-# Will mostly be based on sequential keras layers
-# But could also include selecting k-nearest neighbors
-# Or neighbors within a cutoff
-# These could be part of the transformation/mapping
-
 
 class FCDeepNN(tf.keras.layers.Layer):
     """
   Straight-forward, fully connected set of neural nets to map some input to outputs.
+
   Can act as encoder or decoder depending on settings.
   DOES account for periodic degrees of freedom, converting to sine-cosine pairs if any periodic dofs indicated.
   Note that this could apply to either periodic inputs or latent degrees of freedom
@@ -33,6 +27,17 @@ class FCDeepNN(tf.keras.layers.Layer):
   for an encoder or data dimensionality for a decoder.
   The actually dimensionality will depend on how the encoder or decoder distribution operates on the outputs of
   this layer.
+
+  Attributes
+  ----------
+  target_shape : tuple
+      The output shape of this layer.
+  hidden_dim : list
+      A list of the hidden dimensions of hidden neural network layers.
+  periodic_dofs : tf.Tensor
+      A boolean tensor that indicates which degrees of freedom are periodic.
+  batch_norm : bool
+      Whether batch normalization layers are present.
   """
 
     def __init__(self,
@@ -45,17 +50,20 @@ class FCDeepNN(tf.keras.layers.Layer):
                  kernel_initializer='glorot_uniform',
                  **kwargs):
         """
-    Inputs:
-        target_shape - (int or tuple) number of outputs, intended as a flat output of shape
-                       (batch_shape, target_shape), or, if provided with a tuple or list, that shape appended to
-                       batch_shape (-1,)+target_shape
-        hidden_dim - (int or list of ints, 1200) dimension of hidden layer(s); will create hidden layer for each
-                     value if it is a list
-        periodic_dofs - (bool or list of bool, False) a mask with True appearing where have periodic dofs; by
-                        default, this is False for all dofs, and if passed just True, will treat all as periodic
-        batch_norm - (bool, False) whether or not to apply batch normalization layers in between dense layers
-    Outputs:
-        FCDeepNN layer
+    Creates a FCDeepNN layer instance
+
+    Parameters
+    ----------
+    target_shape : int or tuple
+        Number of outputs, intended as a flat output of shape (batch_shape, target_shape),
+        or, if provided with a tuple or list, that shape appended to batch_shape (-1,)+target_shape
+    hidden_dim : int or list of ints, default 1200
+        Dimension of hidden layer(s). Will create hidden layer for each value if it is a list.
+    periodic_dofs : bool or list of bool, default False
+        A mask with True appearing where have periodic dofs. By default, this is False for all dofs,
+        and if passed just True, will treat all as periodic.
+    batch_norm : bool, default False
+        Whether or not to apply batch normalization layers in between dense layers.
     """
         super(FCDeepNN, self).__init__(name=name, **kwargs)
 
@@ -115,6 +123,21 @@ class FCDeepNN(tf.keras.layers.Layer):
         self.layer_list.append(tf.keras.layers.Reshape(self.target_shape))
 
     def call(self, inputs, training=False):
+        """
+    Applies neural network mapping (or transformation) to inputs.
+
+    Parameters
+    ----------
+    inputs : tf.Tensor
+        Inputs to this layer
+    training : bool, default False
+        Whether or not training or generating. Applicable if have batch normalization layers.
+
+    Returns
+    -------
+    out : tf.Tensor
+        The output of applying this transformation.
+    """
         out = self.flattened(inputs)
 
         # If have periodic DOFs, want to convert to 2D non-periodic coordinates in first step
@@ -146,19 +169,27 @@ class FCDeepNN(tf.keras.layers.Layer):
 class CGCentroid(tf.keras.layers.Layer):
     """
   Generically defines a CG mapping from residues (or molecules) to their centroids.
+
   Will be defined for the specific system at hand based on a list of the numbers of
   atoms in each residue/molecule.
+
+  Attributes
+  ----------
+  res_atom_nums : list-like of ints
+      Number of atoms in each residue or molecule.
   """
 
     def __init__(self, res_atom_nums, name='cg_centroid', **kwargs):
         """
-    Inputs:
-        res_atom_nums - (list-like) list defining the number of atoms in each residue/molecule;
-                        this should be in the correct order of molecules for provided coordinate inputs,
-                        so that if there are N atoms in the first residue/molecule, the first N
-                        coordinates should relate to that molecule
-    Outputs:
-        CGCentroid object
+    Creates a CGCentroid layer instance
+
+    Parameters
+    ----------
+    res_atom_nums : list-like containing ints
+        List defining the number of atoms in each residue/molecule. This should be in the
+        correct order of molecules for provided coordinate inputs, so that if there are
+        N atoms in the first residue/molecule, the first N coordinates should relate to that molecule.
+        Can be a list or array or other subscriptable object containing ints.
     """
 
         super(CGCentroid, self).__init__(name=name, **kwargs)
@@ -167,11 +198,17 @@ class CGCentroid(tf.keras.layers.Layer):
 
     def call(self, inputs):
         """
-    Inputs:
-        inputs - coordinates of all residues/molecules in rectangular coordinates
-                 (shape should be batch x N_atoms x 3)
-    Outputs:
-        out - means (centroid) of atom positions in each residue (shape is batch x N_res x 3)
+    Maps fine-grained (atomistic) coordinates to CG coordinates based on their centroid.
+
+    Parameters
+    ----------
+    inputs : tf.Tensor
+        Coordinates of all residues/molecules in rectangular coordinates (shape should be batch x N_atoms x 3).
+
+    Returns
+    -------
+    out : tf.Tensor
+        Means (centroids) of atom positions in each residue (shape is batch x N_res x 3).
     """
         res_atoms = tf.split(inputs, self.res_atom_nums,
                              axis=-2)  # returns a tf-wrapped list we can operate on with tf functions
@@ -196,17 +233,28 @@ class CGCentroid(tf.keras.layers.Layer):
 class CGCenterOfMass(tf.keras.layers.Layer):
     """
   Generically defines a CG mapping from residues (or molecules) to their centers of mass.
+
   This actually requires that the residue list is supplied as part of the input to this layer.
   This way, we look up numbers of atoms and masses/weights in dictionaries, then apply the transformation.
+
+  Attributes
+  ----------
+  res_atom_nums : dict
+      A dictionary mapping residue (or molecule) names to numbers of atoms.
+  res_masses : dict
+      A dictionary mapping residue names to a list-like of the masses of each atom.
   """
 
     def __init__(self, res_atom_nums, res_masses=None, name='cg_com', **kwargs):
         """
-    Inputs:
-        res_atom_nums - (dict) dictionary mapping residue (or molecule) names to numbers of atoms
-        res_masses - (dict) dictionary mapping residue names to a list-like of the masses of each atom
-    Outputs:
-        CGCenterOfMass object
+    Creates a CGCenterOfMass layer instance
+
+    Parameters
+    ----------
+    res_atom_nums : dict
+        Dictionary mapping residue (or molecule) names to numbers of atoms.
+    res_masses : dict
+        Dictionary mapping residue names to a list-like of the masses of each atom.
     """
 
         super(CGCenterOfMass, self).__init__(name=name, **kwargs)
@@ -221,12 +269,21 @@ class CGCenterOfMass(tf.keras.layers.Layer):
 
     def call(self, coords, res_names):
         """
-    Inputs:
-        coords - coordinates of all residues/molecules in rectangular coordinates
-                 (shape should be batch x N_atoms x 3)
-        res_names - list-like of residue/molecule names in an order matching the coordinates
-    Outputs:
-        out - center of mass of each residue (shape is batch x N_res x 3)
+    Maps fine-grained (atomistic) coordinates to CG beads based on the atoms' center of mass.
+
+    Parameters
+    ----------
+    coords : tf.Tensor
+        Coordinates of all residues/molecules in rectangular coordinates (shape should be batch x N_atoms x 3).
+    res_names : list-like
+        List-like of residue/molecule names in an order matching the coordinates. Can be any subscriptable that
+        returns the residue names involved in this input. It is assumed that the same list of residues is
+        applied to every member of the batch.
+
+    Returns
+    -------
+    out : tf.Tensor
+        Center of mass of each residue (shape is batch x N_res x 3).
     """
         # Looping and putting together at end
         # Really need to figure out ragged tensors, I think, or nested mapping operators in tensorflow
@@ -250,50 +307,80 @@ class CGCenterOfMass(tf.keras.layers.Layer):
 
 class DistanceSelection(tf.keras.layers.Layer):
     """
-  Layer to apply a distance-based mask to coordinates. Only coordinates within the specified
-  cutoff will be kept, with padding applied to make the output have max_included particles.
-  In other words, the input should be of shape (N_batch, N_particles, 3) and the output
-  will be of shape (N_batch, max_included, 3). To reach max_included, zeros may be added
-  to pad the particle coordinates within the cutoff. Having a fixed size is necessary for
-  further operations with neural networks, so max_included should be selected to ensure
-  that it is always as large or larger than the maximum number of particles within the
-  specified cutoff. The reference coordinates must also be supplied when calling this
-  layer, and should be in the shape (N_batch, 3), or at least reshapable to
-  (N_batch, 1, 3).
+  Layer to apply a distance-based mask to coordinates.
+
+  Only coordinates within the specified cutoff will be kept, with padding applied to make
+  the output have max_included particles. In other words, the input should be of shape
+  (N_batch, N_particles, 3) and the output will be of shape (N_batch, max_included, 3).
+  To reach max_included, zeros may be added to pad the particle coordinates within the
+  cutoff. Having a fixed size is necessary for further operations with neural networks,
+  so max_included should be selected to ensure that it is always as large or larger than
+  the maximum number of particles within the specified cutoff. The reference coordinates
+  must also be supplied when calling this layer, and should be in the shape (N_batch, 3),
+  or at least reshapable to (N_batch, 1, 3).
+
+  Attributes
+  ----------
+  cutoff : float
+      The maximum distance of particles from the reference to consider.
+  max_included : int
+      Specifies the maximum number of particles within the cutoff to consider.
+  box_lengths : tf.Tensor
+      A length-3 tensor specifying the simulation box dimensions.
   """
 
     def __init__(self, cutoff, max_included=50, box_lengths=None, name='dist_select', **kwargs):
         """
-    Inputs:
-        cutoff - the distance cutoff with particles closer than this distance included
-        max_included - (50) maximum number of particles within the cutoff; can determine from physics (RDF, etc.)
-        box_lengths - (None) simulation box edge lengths; wraps periodically if provided
-    Outputs:
-        DistanceSelection object
+    Creates DistanceSelection layer instance.
+
+    Parameters
+    ----------
+    cutoff : float
+        The distance cutoff with particles closer than this distance included.
+    max_included : int, default 50
+        Maximum number of particles within the cutoff. Can determine from physics (RDF, etc.).
+        Must set upper number of particles so that pads to this size for well-defined networks.
+    box_lengths : list-like, default None
+        A list, array, or tensor with 3 elements representing the simulation box edge lengths.
+        If provided, assumes the box is a fixed size and wraps periodically when computing
+        distances.
     """
         super(DistanceSelection, self).__init__(name=name, **kwargs)
 
         self.cutoff = cutoff
         self.sq_cut = cutoff**2
         self.max_included = max_included
-        self.box_lengths = box_lengths
+        self.box_lengths = tf.constant(box_lengths)
         if self.box_lengths is not None:
             self.box_lengths = tf.reshape(self.box_lengths, (1, 1, 3))
 
     def call(self, coords, ref, box_lengths=None, particle_info=None):
         """
-    Inputs:
-        coords - coordinates to select from based on the distance cutoff (N_batch x N_particles x 3);
-                 note that this could also be a nested list or ragged tensor where the number
-                 of particles is different for each batch instance
-        ref - reference coordinates for each batch (N_batch x 3)
-        box_lengths - (None) uses these box lengths calculating distances with periodic cell;
-                      should be of shape (N_batch, 3) if provided
-        particle_info - (None) extra particle information that will be masked in the same way as the
-                        coordinates; could be things like particle type, LJ parameters, charge, etc.
-    Outputs:
-        select_coords - selected coordinates within the distance cutoff, padded with zeros to have
-                        shape (N_batch, max_included, 3)
+    Selects all particles within the cutoff distance and pads.
+
+    If particle_info is also provided, also masks and pads that information.
+
+    Parameters
+    ----------
+    coords : tf.Tensor or tf.RaggedTensor
+        Coordinates to select from based on the distance cutoff (N_batch x N_particles x 3).
+        Note that this could also be a nested list or ragged tensor where the number
+        of particles is different for each batch instance.
+    ref : tf.Tensor
+        Reference coordinates for each batch (N_batch x 3).
+    box_lengths : tf.Tensor, default None
+        Uses these box lengths calculating distances with periodic cell. This is necessary to
+        provide if the box changes size for each configuration, such as for the NPT ensemble.
+        Should be of shape (N_batch, 3) if provided.
+    particle_info : tf.Tensor, default None
+        Extra particle information that will be masked in the same way as the
+        coordinates. Could be things like particle type, LJ parameters, charge, etc.
+
+    Returns
+    -------
+    select_coords : tf.Tensor
+        Selected coordinates within the distance cutoff, padded with zeros to have
+        shape (N_batch, max_included, 3).
     """
         # Want to work with ragged tensor so can apply cutoff to each set of coordinates
         # (which may be point clouds of different sizes for different batch elements)
@@ -361,15 +448,24 @@ class DistanceSelection(tf.keras.layers.Layer):
 
 class AttentionBlock(tf.keras.layers.Layer):
     """
-  Geometric algebra attention block as described in Spellings (2021)
+  Geometric algebra attention block as described in Spellings (2021).
+
+  The operations on point clouds are rotationally invariant and permutationally equivariant.
+
+  Attributes
+  ----------
+  hidden_dim : int
+      The dimension of hidden neural network layers.
   """
 
     def __init__(self, hidden_dim=40, name='geom_attn', activation=tf.nn.relu, **kwargs):
         """
-    Inputs:
-        hidden_dim - hidden dimension of dense network after attention
-    Outputs:
-        AttentionBlock object
+    Creates an AttentionBlock layer instance
+
+    Parameters
+    ----------
+    hidden_dim : int, default 40
+        Hidden dimension of dense network after attention.
     """
         super(AttentionBlock, self).__init__(name=name, **kwargs)
 
@@ -405,10 +501,17 @@ class AttentionBlock(tf.keras.layers.Layer):
 
     def call(self, inputs, mask=None):
         """
-    Inputs:
-        list of coords (coordinates of particles) and embedding (current embedding or particle information)
-    Outputs:
-        new_embed - the new embedding after applying this attention block
+    Performs geometric algebra attention to a point cloud and current embedding to create a new embedding.
+
+    Parameters
+    ----------
+    inputs : tf.Tensor
+        List of coords (coordinates of particles) and embedding (current embedding or particle information).
+
+    Returns
+    -------
+    new_embed : tf.Tensor
+        The new embedding after applying this attention block.
     """
         # Inputs as list to get input_shape for both as list
         # Otherwise just get input shape of first argument
@@ -430,10 +533,22 @@ class AttentionBlock(tf.keras.layers.Layer):
 class ParticleEmbedding(tf.keras.layers.Layer):
     """
   An embedding of CG or FG particles from their Cartesian coordinates to a new space.
+
   Geometric algebra attention (https://github.com/klarh/geometric_algebra_attention) is used to ensure
   that the embedding is permutation equivariant and rotation invariant.
   Note that translation invariance should also be applied by only passing local coordinates (relative to
   some reference site) to this function.
+
+  Attributes
+  ----------
+  embedding_dim : int
+      Dimension of ultimate embedding.
+  hidden_dim : int
+      Dimension of hidden neural network layers.
+  num_blocks : int
+      Number of geometric attention blocks applied.
+  mask_zero : bool
+      Whether or not a mask will be applied to zeros.
   """
 
     def __init__(self,
@@ -445,13 +560,18 @@ class ParticleEmbedding(tf.keras.layers.Layer):
                  activation=tf.nn.relu,
                  **kwargs):
         """
-    Inputs:
-        embedding_dim - final dimension of embedding; also used for working dimension of extra information
-        hidden_dim - (40) dimension of all hidden dimensions in dense networks
-        num_blocks - (2) number of attention blocks we will apply
-        mask_zero - (True) whether or not to apply a mask layer to mask out zeros
-    Outputs:
-        ParticleEmbedding object
+    Creates ParticleEmbedding layer instance
+
+    Parameters
+    ----------
+    embedding_dim : int
+        Final dimension of embedding; also used for working dimension of extra information.
+    hidden_dim : int, default 40
+        Dimension of all hidden dimensions in dense networks.
+    num_blocks : int, default 2
+        Number of attention blocks we will apply.
+    mask_zero : bool, default True
+        Whether or not to apply a mask layer to mask out zeros.
     """
         super(ParticleEmbedding, self).__init__(name=name, **kwargs)
 
@@ -497,11 +617,19 @@ class ParticleEmbedding(tf.keras.layers.Layer):
 
     def call(self, coords, particle_info):
         """
-    Inputs:
-        coords - coordinates of particles
-        particle_info - particle information like type or parameters
-    Outputs:
-        embedding - the embedding of these particles
+    Creates an embedding based on rotation invariant and permutation invariant operations.
+
+    Parameters
+    ----------
+    coords : tf.Tensor
+        Coordinates of particles.
+    particle_info : tf.Tensor
+        Particle information like type or parameters.
+
+    Returns
+    -------
+    embedding : tf.Tensor
+        The embedding of these particles.
     """
         if self.mask_zero:
             # Can only mask coordinates properly
@@ -531,20 +659,34 @@ class ParticleEmbedding(tf.keras.layers.Layer):
 
 class LocalParticleDescriptors(tf.keras.layers.Layer):
     """
+  A layer defining an embedding describing the local environment of a point cloud around a reference.
+
   This class joins together distance masking and embedding layers to take Cartesian particle
   coordinates, mask them by distance to a reference while converting to local coordinates, and then
   compute embeddings, or descriptors. Likely, the mask and embed functions will be DistanceSelection
   and ParticleEmbedding objects. Mainly a wrapper for convenience since will use these functions
   together quite a bit.
+
+  Attributes
+  ----------
+  mask_fn : callable (layer)
+      A layer applying a distnace-based masking to define those particles local around a reference.
+  embed_fn : callable (layer)
+      A layer that turns the local point cloud into an embedding.
   """
 
     def __init__(self, mask_fn, embed_fn, name='local_particle_desc', **kwargs):
         """
-    Inputs:
-        mask_fn - the distance-based masking function that also produces local coordinates of selected particles
-        embed_fn - the embedding function to convert local coordinates to descriptors
-    Outputs:
-        LocalParticleDescriptors object
+    Creates a LocalParticleDescriptors layer instance
+
+    Parameters
+    ----------
+    mask_fn : callable
+        The distance-based masking function that also produces local coordinates of selected particles.
+        This should likely be a layer, or at least a tf.Module for trainability in tensorflow.
+    embed_fn : callable
+        The embedding function to convert local coordinates to descriptors. Again, a keras layer will
+        work the best.
     """
         super(LocalParticleDescriptors, self).__init__(name=name, **kwargs)
 
@@ -553,20 +695,28 @@ class LocalParticleDescriptors(tf.keras.layers.Layer):
 
     def call(self, coords, ref, props, box_lengths=None):
         """
-    Inputs:
-        coords - coordinates of particles to mask by distance (N_batch, (N_particles), 3);
-                 note that this can be a ragged tensor where N_particles is different for each
-                 batch index
-        ref - coordinates of reference positions for determining mask (N_batch, 1, 3);
-              only one reference coordinate for each batch element
-        props - properties of particles, such as type, or parameters like charge (N_batch, (N_particles), N_props);
-                can be ragged like coords, but first two dimensions, batch and number of particles,
-                should match coords
-        box_lengths - optional argument for box dimensions if box changes with given configuration and want to
-                      wrap periodically when computing distances
-    Outputs:
-        descriptors - descriptors of the local environment around each reference position (N_batch, N_descriptors);
-                      note that the number of descriptors is given by the output dimension of embed_fn
+    Applies a masking around the reference and creates a local embedding of that local point cloud.
+
+    Parameters
+    ----------
+    coords : tf.Tensor or tf.RaggedTensor
+        Coordinates of particles to mask by distance (N_batch, (N_particles), 3).
+        Note that this can be a ragged tensor where N_particles is different for each batch index.
+    ref : tf.Tensor
+        Coordinates of reference positions for determining mask (N_batch, 1, 3).
+        Only one reference coordinate for each batch element.
+    props : tf.Tensor or tf.RaggedTensor
+        Properties of particles, such as type, or parameters like charge (N_batch, (N_particles), N_props).
+        Can be ragged like coords, but first two dimensions, batch and number of particles, should match coords.
+    box_lengths : tf.Tensor, default None
+        Optional argument for box dimensions if box changes with given configuration and want to
+        wrap periodically when computing distances
+
+    Returns
+    -------
+    descriptors : tf.Tensor
+        Descriptors of the local environment around each reference position (N_batch, N_descriptors).
+        Note that the number of descriptors is given by the output dimension of self.embed_fn.
     """
         local_coords, local_props = self.mask_fn(coords, ref, particle_info=props, box_lengths=box_lengths)
         descriptors = self.embed_fn(local_coords, local_props)

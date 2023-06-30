@@ -1,5 +1,6 @@
 """
 Defines normalizing flows based on tensorflow-probability bijectors.
+
 All classes inherit from tf.keras.layers.Layer, except for a single
 tf.keras.Model class defined here for convenience of training only
 normalizing flows.
@@ -11,10 +12,25 @@ import tensorflow_probability as tfp
 
 class SplineBijector(tf.keras.layers.Layer):
     """
+  Layer to implement a spline bijector function.
+
   Follows tfp example for using rational quadratic splines (as described in Durkan et al.
   2019) to replace affine transformations (in, say, RealNVP). This should allow more flexible
   transformations with similar cost and should work much better with 1D flows. Intended for
   operation with tfp.bijectors.RealNVP, which impacts the format of the "call" method.
+
+  Attributes
+  ----------
+  data_dim : int
+      Dimension of the input data, which will also be the dimension of the output.
+  bin_min : int
+      Minimum value for spline to act on data.
+  bin_max : int
+      Maximum value for spline to act on data.
+  num_bins : int
+      Number of spline bins (intervals).
+  hidden_dim : int
+      Dimensionality of any hidden neural network layers.
   """
 
     def _bin_positions(self, x):
@@ -43,14 +59,19 @@ class SplineBijector(tf.keras.layers.Layer):
                  kernel_initializer='truncated_normal',
                  **kwargs):
         """
-    Inputs:
-         data_dim - (int) dimension of the output data; MUST specify becuase input and output
-                     may not be the same size (will not be if using RealNVP with odd event_shape)
-         bin_range - (length-2 list or tuple, [-10.0, 10.0]) range of data flow is applied to
-         num_bins - (int, 32) number of bins for spline knots
-         hidden_dim - (int, 200) number of hidden dimensions in neural nets
-    Outputs:
-         SplineBijector object
+    Creates a SplineBijector layer instance
+
+    Parameters
+    ----------
+    data_dim : int
+        Dimension of the output data. MUST specify becuase input and output
+        may not be the same size (will not be if using RealNVP with odd event_shape).
+    bin_range : list or tuple, default [-10.0, 10.0]
+        Must have exactly 2 elements representing the range of data the flow is applied to.
+    num_bins : int, default 32
+        Number of bins for spline knots.
+    hidden_dim : int, default 200
+        Number of hidden dimensions in neural nets.
     """
         super(SplineBijector, self).__init__(name=name, **kwargs)
         self.data_dim = data_dim
@@ -83,7 +104,19 @@ class SplineBijector(tf.keras.layers.Layer):
     def call(self, input_tensor, nunits):
         """
     Takes an input tensor and returns a RationalQuadraticSpline object.
+
     The second input, nunits is necessary for compatibility with tfp.bijectors.RealNVP
+
+    Parameters
+    ----------
+    input_tensor : tf.Tensor
+        Input to this layer
+    nunits : N/A
+        Not used, but required for compatibility with tfp.bijectors.RealNVP
+
+    Returns
+    -------
+    tfp.bijectors.RationalQuadraticSpline instance
     """
         # Don't use nunits because create nets beforehand
         del nunits
@@ -137,18 +170,36 @@ class SplineBijector(tf.keras.layers.Layer):
 class RQSSplineRealNVP(tf.keras.layers.Layer):
     """
   Abstraction of tfp.bijectors.RealNVP with rational quadratic spline bijector functions.
+
   Allows for setting up a single flow with multiple blocks.
   Limited to transforming distributions with 1D event shape.
+
+  Attributes
+  ----------
+  data_dim : int
+      Dimensionality of data being transformed.
+  num_blocks : int
+      Number of spline bijector RealNVP blocks in the chain.
+  rqs_params : dict
+      Dictionary of keyword arguments for SplineBijector
+  batch_norm : bool
+      Whether or not batch normalization layers are placed between spline bijectors.
+  conditional : bool
+      Whether or not conditional inputs are accepted. This is always False for this class.
   """
 
     def __init__(self, num_blocks=4, rqs_params={}, batch_norm=False, name='rqs_realNVP', **kwargs):
         """
-      Inputs:
-          num_blocks - (int, 4) number of RealNVP blocks (data splits, should be at least 2)
-          rqs_params - (dict, {}) dictionary of keyword arguments for SplineBijector
-          batch_norm - (bool, False) whether or not to apply batch normalization between blocks
-      Outputs:
-          RQSSplineRealNVP layer
+      Creates a RQSSplineRealNVP layer
+
+      Parameters
+      ----------
+      num_blocks : int, default 4
+        Number of RealNVP blocks (data splits, should be at least 2).
+      rqs_params : dict, default {}
+        Dictionary of keyword arguments for SplineBijector.
+      batch_norm : bool, default False
+        Whether or not to apply batch normalization between blocks.
     """
         super(RQSSplineRealNVP, self).__init__(name=name, **kwargs)
         self.num_blocks = num_blocks
@@ -197,11 +248,22 @@ class RQSSplineRealNVP(tf.keras.layers.Layer):
 
     def call(self, inputs, training=False):
         """
-      Inputs:
-          inputs - (int) an input tensor or tfp.distribution
-          training - (bool) whether or not training is True or False in BatchNormalization bijectors
-      Outputs:
-          chain bijector output of inputs (could be tensor or tfp.distribution)
+      Applies rational-quadratic-spline-based RealNVP chain of flow blocks to input.
+
+      The input may be a sample from a distribution, in which case the transformed sample
+      is returned, or a tfp.distributions object, in which case a tfp.distributions.TransformedDistribution
+      object is returned.
+
+      Parameters
+      ----------
+      inputs : tf.Tensor
+          An input tensor or tfp.distribution.
+      training : bool
+          Whether or not training is True or False in BatchNormalization bijectors.
+
+      Returns
+      -------
+      tf.Tensor or tfp.distributions.TransformedDistribution
     """
         # Need to go through and adjust training variable in BatchNormalization bijector layers
         if self.batch_norm:
@@ -224,12 +286,33 @@ class RQSSplineRealNVP(tf.keras.layers.Layer):
 
 class MaskedSplineBijector(tf.keras.layers.Layer):
     """
+  A spline bijector layer parametrized by masked autoregressive networks.
+
   Follows tfp example for using rational quadratic splines (as described in Durkan et al.
   2019) to replace affine transformations (in, say, RealNVP). This should allow more flexible
   transformations with similar cost and should work much better with 1D flows. This version
   uses dense layers that are masked to be autoregressive with conditional inputs optional.
   Such a setup is intended to be used with tfp.bijectors.MaskedAutoregressiveFlow, which
   impacts the structure of arguments to the "call" method.
+
+  Attributes
+  ----------
+  data_dim : int
+      Dimension of the input data, which will also be the dimension of the output.
+  bin_min : int
+      Minimum value for spline to act on data.
+  bin_max : int
+      Maximum value for spline to act on data.
+  num_bins : int
+      Number of spline bins (intervals).
+  hidden_dim : int
+      Dimensionality of any hidden neural network layers.
+  conditional : bool
+      Whether or not conditional inputs are accepted.
+  conditional_event_shape : tuple
+      The shape of conditional inputs, if conditional is True.
+  input_order : list or str
+      List specifying order of processing DOFs or string describing this behavior.
   """
 
     def _bin_positions(self, x):
@@ -261,15 +344,22 @@ class MaskedSplineBijector(tf.keras.layers.Layer):
             input_order='left-to-right',  # May want default to be random? Especially with multiple blocks
             **kwargs):
         """
-    Inputs:
-         bin_range - (length-2 list or tuple, [-10.0, 10.0]) range of data flow is applied to
-         num_bins - (int, 32) number of bins for spline knots
-         hidden_dim - (int, 200) number of hidden dimensions in neural nets
-         conditional - (bool, False) whether or not conditional inputs should be included
-         conditional_event_shape - (int, None) shape of conditional inputs
-         input_order - (str or list) - can specify order of DOFs or string from tfp.bijectors.AutoregressiveNetwork
-    Outputs:
-         MaskedSplineBijector object
+    Creates a MaskedSplineBijector layer instance
+
+    Parameters
+    ----------
+    bin_range : list or tuple, default [-10.0, 10.0]
+        A length-2 list or tupe specifying the range of data flow is applied to.
+    num_bins : int, default 32
+        Number of bins for spline knots.
+    hidden_dim : int, default 200
+        Number of hidden dimensions in neural nets
+    conditional : bool, default False
+        Whether or not conditional inputs should be included
+    conditional_event_shape : int, default None
+        Shape of conditional inputs; required if conditional is True.
+    input_order : str or list
+        Can specify order of DOFs or string corresponding to tfp.bijectors.AutoregressiveNetwork inputs.
     """
         super(MaskedSplineBijector, self).__init__(name=name, **kwargs)
         self.bin_min = bin_range[0]
@@ -321,6 +411,20 @@ class MaskedSplineBijector(tf.keras.layers.Layer):
                                                                kernel_initializer=self.kernel_initializer)
 
     def call(self, input_tensor, conditional_input=None):
+        """
+    Generates a rational quadratic spline transformation based on applying masked autoregresive networks.
+
+    Parameters
+    ----------
+    input_tensor : tf.Tensor
+        Inputs to this layer
+    conditional_input : tf.Tensor, default None
+        Conditional inputs to this layer. Required if conditional attribute set to True.
+
+    Returns
+    -------
+    tfp.bijectors.RationalQuadraticSpline instance
+    """
         # Use nets to get spline parameters
         bw = self.bin_widths(input_tensor, conditional_input=conditional_input)
         # Apply "activations" manually since AutoregressiveNetwork does not apply activation on last layer
@@ -351,18 +455,36 @@ class MaskedSplineBijector(tf.keras.layers.Layer):
 class RQSSplineMAF(tf.keras.layers.Layer):
     """
   Abstraction of tfp.bijectors.MaskedAutoregressiveFlow with masked rational quadratic spline bijector functions.
+
   Allows for setting up a single flow with multiple blocks.
   Limited to transforming distributions with 1D event shape.
+
+  Attributes
+  ----------
+  data_dim : int
+      Dimensionality of data being transformed.
+  num_blocks : int
+      Number of spline bijector RealNVP blocks in the chain.
+  rqs_params : dict
+      Dictionary of keyword arguments for MaskedSplineBijector
+  batch_norm : bool
+      Whether or not batch normalization layers are placed between spline bijectors.
+  conditional : bool
+      Whether or not conditional inputs are accepted. This is always False for this class.
   """
 
     def __init__(self, num_blocks=2, rqs_params={}, batch_norm=False, name='rqs_MAF', **kwargs):
         """
-      Inputs:
-          num_blocks - (int, 2) number of RealNVP blocks (data splits, should be at least 2)
-          rqs_params - (dict, {}) dictionary of keyword arguments for SplineBijector
-          batch_norm - (bool, False) whether or not to apply batch normalization between blocks
-      Outputs:
-          RQSSplineMAF layer
+      Creates RQSSplineMAF layer instance
+
+      Parameters
+      ----------
+      num_blocks : int, default 2
+          Number of RealNVP blocks (data splits, should be at least 2)
+      rqs_params : dict, default {}
+          Dictionary of keyword arguments for MaskedSplineBijector
+      batch_norm : bool, default False
+        Whether or not to apply batch normalization between blocks
     """
         super(RQSSplineMAF, self).__init__(name=name, **kwargs)
         self.num_blocks = num_blocks
@@ -409,12 +531,24 @@ class RQSSplineMAF(tf.keras.layers.Layer):
 
     def call(self, inputs, training=False, conditional_input=None):
         """
-      Inputs:
-          inputs - (int) an input tensor or tfp.distribution
-          training - (bool) whether or not training is True or False in BatchNormalization bijectors
-          conditional_input - (tensor) conditional input for the MAF bijectors
-      Outputs:
-          chain bijector output of inputs (could be tensor or tfp.distribution)
+      Applies a chain of rational-quadratic-spline-based flows parametrized by masked autoregressive networks.
+
+      The input may be a sample from a distribution, in which case the transformed sample
+      is returned, or a tfp.distributions object, in which case a tfp.distributions.TransformedDistribution
+      object is returned.
+
+      Parameters
+      ----------
+      inputs : tf.Tensor
+          An input tensor or tfp.distribution.
+      training : bool, default False
+          Whether or not training is True or False in BatchNormalization bijectors.
+      conditional_input : tf.Tensor, default None
+          Conditional input for the MAF bijectors
+
+      Returns
+      -------
+      tf.Tensor or tfp.distributions.TransformedDistribution
     """
         # Need to go through and adjust training variable in BatchNormalization bijector layers
         # Also collect names of blocks (i.e., not BatchNormalization layers) to pass conditional inputs to
@@ -450,16 +584,31 @@ class RQSSplineMAF(tf.keras.layers.Layer):
 class FlowModel(tf.keras.Model):
     """
   Model wrapper around flow for easier, faster training.
+
+  No loss function is necessary, as the computation of loss is built into this layer's call.
+  This only makes sense if training a flow to only transform from one distribution to another
+  and that is the only objective. Specifically, if you have samples from a distribution you
+  want to learn how to generate so that the loss is the log-probability of those samples
+  under the flowed distribution (latent distribution passed through the flow).
+
+  Attributes
+  ----------
+  flow : tfp.bijector object or layer applying a bijector
+      Flow that is applied to transform the latent distribution.
+  latent_dist : tfp.distributions object
+      Distribution that flow acts on.
   """
 
     def __init__(self, flow, latent_dist, name='flow_model', **kwargs):
         """
-    Inputs:
-        flow - (tfp.bijector object or layer applying bijector) flow to apply to transform latent distribution
-        latent_dist - (tfp.distributions object) distribution that flow acts upon in the forward direction to produce
-                      samples
-    Outputs:
-        FlowModel (tf.keras.Model) object
+    Creates a FlowModel model instance
+
+    Parameters
+    ----------
+    flow : tfp.bijector object or layer applying bijector
+        Flow that will be applied in order to transform latent distribution.
+    latent_dist : tfp.distributions object
+        Distribution that flow acts upon in the forward direction to produce samples.
     """
         super(FlowModel, self).__init__(name=name, **kwargs)
         self.flow = flow
@@ -469,11 +618,19 @@ class FlowModel(tf.keras.Model):
 
     def call(self, inputs, training=False):
         """
-    Inputs:
-        inputs - samples from the distribution we want to learn
-        training - (bool, False) whether or not we are training
-    Outputs:
-        dist - transformed distribution object (tfp.distributions object)
+    Applies a flow to the latent distribution and calculates log-probability of provided samples.
+
+    Parameters
+    ----------
+    inputs : tf.Tensor
+        Samples from the distribution we want to learn (forward application of the flow
+        produces this distribution).
+    training : bool, default False
+        Whether or not we are training. May be important if have block normalizations in flow layer.
+
+    Returns
+    -------
+    dist : tfp.distributions.TransformedDistribution instance
     """
         # Start by transforming our latent distribution with our flow
         # Note that flow behavior depends on training boolean
@@ -503,15 +660,22 @@ class FlowModel(tf.keras.Model):
     def predict_step(self, lz):
         """
     A custom predict step makes the model more useful.
+
     fit and evaluate will compute losses (and metrics) with training set to True and False, respectively.
     The returned loss will typically be the average negative log-probability over the batch.
     predict instead just implements the flow.
     You can always access whatever you need based on model.flow and model.latent_dist, or calling the model..
     But this is a short-cut.
-    Inputs:
-        lz - latent distribution sample
-    Outputs:
-        z - transformed sample under flow
+
+    Parameters
+    ----------
+    lz : tf.Tensor
+        A latent distribution sample.
+
+    Returns
+    -------
+    z : tf.Tensor
+        A transformed sample under flow.
     """
         return self.flow(lz, training=False)
 
