@@ -1,5 +1,5 @@
 """
-Unit and regression test for the vaemolsim package.
+Simple import test.
 """
 
 # Import package, test suite, and other packages as needed
