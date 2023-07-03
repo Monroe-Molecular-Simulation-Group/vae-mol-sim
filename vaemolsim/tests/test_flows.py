@@ -28,17 +28,17 @@ class TestSplineBijector:
         sb = self.sb_class(1)
         _ = sb(self.input_data([10, 1]))  # Provide input to get built
         assert sb.data_dim == 1
-        assert sb.bin_widths.weights[0].shape == (sb.hidden_dim, 2 * sb.num_bins)
-        assert sb.bin_heights.weights[0].shape == (sb.hidden_dim, 2 * sb.num_bins)
-        assert sb.knot_slopes.weights[0].shape == (sb.hidden_dim, 2 * (sb.num_bins - 1))
+        assert sb.bin_widths.weights[0].shape == (sb.hidden_dim, sb.data_dim * sb.num_bins)
+        assert sb.bin_heights.weights[0].shape == (sb.hidden_dim, sb.data_dim * sb.num_bins)
+        assert sb.knot_slopes.weights[0].shape == (sb.hidden_dim, sb.data_dim * (sb.num_bins - 1))
 
     def test_default_creation_multid(self):
         sb = self.sb_class(5)
         _ = sb(self.input_data([10, 5]))  # Provide input to build
         assert sb.data_dim == 5
-        assert sb.bin_widths.weights[0].shape == (sb.hidden_dim, 2 * sb.num_bins)
-        assert sb.bin_heights.weights[0].shape == (sb.hidden_dim, 2 * sb.num_bins)
-        assert sb.knot_slopes.weights[0].shape == (sb.hidden_dim, 2 * (sb.num_bins - 1))
+        assert sb.bin_widths.weights[0].shape == (sb.hidden_dim, sb.data_dim * sb.num_bins)
+        assert sb.bin_heights.weights[0].shape == (sb.hidden_dim, sb.data_dim * sb.num_bins)
+        assert sb.knot_slopes.weights[0].shape == (sb.hidden_dim, sb.data_dim * (sb.num_bins - 1))
 
     def test_custom_creation(self):
         kwargs = {
@@ -96,8 +96,44 @@ class TestMaskedSplineBijector(TestSplineBijector):
         # So to be able to inherit above class, just ignore dim argument here
         return flows.MaskedSplineBijector(**kwargs)
 
+    # Overwrite next two tests... shape of networks is very different
+    def test_default_creation_1d(self):
+        sb = self.sb_class(1)
+        _ = sb(self.input_data([10, 1]))  # Provide input to get built
+        assert sb.data_dim == 1
+        assert sb.bin_widths.weights[0].shape == (sb.data_dim, sb.hidden_dim)
+        assert sb.bin_widths.event_shape == [
+            sb.data_dim,
+        ]
+        assert sb.bin_heights.weights[0].shape == (sb.data_dim, sb.hidden_dim)
+        assert sb.bin_heights.event_shape == [
+            sb.data_dim,
+        ]
+        assert sb.knot_slopes.weights[0].shape == (sb.data_dim, sb.hidden_dim)
+        assert sb.knot_slopes.event_shape == [
+            sb.data_dim,
+        ]
+
+    def test_default_creation_multid(self):
+        sb = self.sb_class(5)
+        _ = sb(self.input_data([10, 5]))  # Provide input to build
+        assert sb.data_dim == 5
+        assert sb.bin_widths.weights[0].shape == (sb.data_dim, sb.hidden_dim)
+        assert sb.bin_widths.event_shape == [
+            sb.data_dim,
+        ]
+        assert sb.bin_heights.weights[0].shape == (sb.data_dim, sb.hidden_dim)
+        assert sb.bin_heights.event_shape == [
+            sb.data_dim,
+        ]
+        assert sb.knot_slopes.weights[0].shape == (sb.data_dim, sb.hidden_dim)
+        assert sb.knot_slopes.event_shape == [
+            sb.data_dim,
+        ]
+
     def test_cond_inputs(self, normal_sample):
-        sb = self.sb_class(conditional=True, conditional_event_shape=self.cond_data.shape[-1])
+        cond_data = tf.random.normal([normal_sample.shape[0], 2])
+        sb = self.sb_class(normal_sample.shape[-1], conditional=True, conditional_event_shape=cond_data.shape[-1])
         bi = sb(normal_sample, conditional_input=self.input_data([normal_sample.shape[0], 2]))
         t_sample = bi.forward(normal_sample)
         assert sb.bin_widths._conditional
@@ -149,7 +185,8 @@ class TestRQSSplineRealNVP:
         _ = t_dist.log_prob(t_sample)  # Check log-probability calc
         new_sample = t_dist.sample(10)  # Make sure new transformed distribution can sample
         _ = t_dist.log_prob(new_sample)  # And calculate a log probability
-        assert isinstance(t_dist, tfp.distributions.TransformedDistribution)
+        assert isinstance(t_dist, tfp.distributions.Distribution)  # Make sure it's a distribution
+        assert hasattr(t_dist, "bijector")  # Make sure it has a transform
 
     def test_vonmises_dist_transform(self, vonmises_dist, vonmises_sample):
         f = self.flow_class(rqs_params={'bin_range': [-np.pi, np.pi]})
@@ -158,7 +195,8 @@ class TestRQSSplineRealNVP:
         _ = t_dist.log_prob(t_sample)  # Check log-probability calc
         new_sample = t_dist.sample(10)  # Make sure new transformed distribution can sample
         _ = t_dist.log_prob(new_sample)  # And calculate a log-probability
-        assert isinstance(t_dist, tfp.distributions.TransformedDistribution)
+        assert isinstance(t_dist, tfp.distributions.Distribution)  # Make sure it's a distribution
+        assert hasattr(t_dist, "bijector")  # Make sure it has a transform
 
 
 class TestRQSSplineMAF(TestRQSSplineRealNVP):
@@ -169,6 +207,8 @@ class TestRQSSplineMAF(TestRQSSplineRealNVP):
         cond_data = tf.random.normal([normal_sample.shape[0], 2])
         f = self.flow_class(rqs_params={'conditional': True, 'conditional_event_shape': 2}, )
         t_sample = f(normal_sample, conditional_input=cond_data)
+        with pytest.raises(ValueError, match='conditional_input'):
+            _ = f(normal_sample)
         cond_bool = []
         for bij in f.chain.bijectors:
             if isinstance(bij, flows.MaskedSplineBijector):
@@ -178,8 +218,9 @@ class TestRQSSplineMAF(TestRQSSplineRealNVP):
         assert not np.all(t_sample == normal_sample)
         t_dist = f(normal_dist, conditional_input=cond_data)
         new_sample = t_dist.sample(10)  # Make sure new transformed distribution can sample
-        lp = t_dist.log_prob(new_sample)  # And calculate a log probability
-        assert isinstance(t_dist, tfp.distributions.TransformedDistribution)
+        _ = t_dist.log_prob(new_sample)  # And calculate a log probability
+        assert isinstance(t_dist, tfp.distributions.Distribution)  # Make sure it's a distribution
+        assert hasattr(t_dist, "bijector")  # Make sure it has a transform
 
 
 class TestFlowModel:
@@ -194,9 +235,9 @@ class TestFlowModel:
         flows.RQSSplineMAF(),
         flows.RQSSplineMAF(batch_norm=True),
     ])
-    def test_model(self, f, norm_dist, norm_sample):
-        _ = f(norm_sample)
-        m = flows.FlowModel(f, norm_dist)
+    def test_model(self, f, normal_dist, normal_sample):
+        _ = f(normal_sample)
+        m = flows.FlowModel(f, normal_dist)
         _ = m(self.target_sample)  # Make sure can pass through model
         # Make sure can compile
         m.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3))
@@ -207,5 +248,5 @@ class TestFlowModel:
         eval_loss = m.evaluate(self.target_sample, verbose=0)
         assert eval_loss is not None
         # And prediction
-        pred = m.predict(norm_sample, verbose=0)
+        pred = m.predict(normal_sample, verbose=0)
         assert pred is not None

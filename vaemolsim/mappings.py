@@ -350,9 +350,11 @@ class DistanceSelection(tf.keras.layers.Layer):
         self.cutoff = cutoff
         self.sq_cut = cutoff**2
         self.max_included = max_included
-        self.box_lengths = tf.constant(box_lengths)
-        if self.box_lengths is not None:
+        if box_lengths is not None:
+            self.box_lengths = tf.constant(box_lengths)
             self.box_lengths = tf.reshape(self.box_lengths, (1, 1, 3))
+        else:
+            self.box_lengths = None
 
     def call(self, coords, ref, box_lengths=None, particle_info=None):
         """

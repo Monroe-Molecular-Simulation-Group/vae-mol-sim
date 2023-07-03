@@ -330,7 +330,7 @@ class AutoregressiveBlockwise(IndependentBlockwise):
 
     def params_size(self):
         """
-    Returns the shape of the autoregressive netowrk output.
+    Returns the shape of the autoregressive network output.
 
     This should be the output size of a layer before this one.
     This is the number of dofs by the number of parameters.
@@ -437,10 +437,14 @@ class FlowedDistribution(tf.keras.layers.Layer):
 
     Returns
     -------
-    tuple
+    p_size : tuple or int
         Size of parameters needed for inputs to the distribution to be transformed
     """
-        return self.latent_dist.params_size()
+        if issubclass(type(self.latent_dist), tfp.layers.DistributionLambda):
+            p_size = self.latent_dist.params_size(self.latent_dist._event_shape)
+        else:
+            p_size = self.latent_dist.params_size()
+        return p_size
 
     def get_config(self):
         config = super(FlowedDistribution, self).get_config()

@@ -101,7 +101,7 @@ class SplineBijector(tf.keras.layers.Layer):
                                                  name='s',
                                                  kernel_initializer=self.kernel_initializer)
 
-    def call(self, input_tensor, nunits):
+    def call(self, input_tensor, nunits=None):
         """
     Takes an input tensor and returns a RationalQuadraticSpline object.
 
