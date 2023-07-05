@@ -457,8 +457,13 @@ class FlowedDistribution(tf.keras.layers.Layer):
 
 # Could instead consider just creating a StaticDistribution layer
 # This would just return the same tfp distribution object regardless of inputs
-# Could the wrap that in FlowedDistribution without requiring StaticFlowedDistribution
+# Could then wrap that in FlowedDistribution without requiring StaticFlowedDistribution
 # Both are equivalent, just packaged differently
+# BUT, shouldn't we be able to create such a "static" distribution by using a DistributionLambda
+# with a make_distribution_fn that ignores inputs?
+# Then don't need StaticFlowedDistribution, only FlowedDistribution?
+# Seems to work... should avoid using this and update things to avoid
+# And consider removing
 class StaticFlowedDistribution(tf.keras.layers.Layer):
     """
   Similar to FlowedDistribution, but takes a static tfp.distributions object as the starting point.
@@ -511,7 +516,6 @@ class StaticFlowedDistribution(tf.keras.layers.Layer):
         Whether or not we are training or making predictions.
         Applicable if have block normalization layers in flow.
     """
-        # Passing kwargs necessary to capture conditional_input if provided
         return self.flow(self.latent_dist, training=training)
 
     def get_config(self):

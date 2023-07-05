@@ -8,9 +8,16 @@ usually taking the form of a log-probability of that distribution
 2. regularization losses that penalize distance of a variational encoding distribution
 from a prior distribution, usually taking the form of a KL-divergence loss
 
-More complicated scenarios can also arise, such as requring the potential energy
+More complicated scenarios can also arise, such as requiring the potential energy
 when training a normalizing flow or VAE in "reverse," which is why so many
 loss options appear here.
+
+For regularizers, the philosophy is that each regularizer should always take two
+distributions as input. From the perspective of a VAE model, these are the encoder
+and the prior distributions. What we DO with those distributions is up to the type
+of regularization we want to apply. This framework allows us to re-use the same
+model-level code for a VAE, but change the regularizer in order to remove
+regularization, or change how it is applied.
 """
 
 import tensorflow as tf
@@ -158,7 +165,7 @@ class InfoRegularizer(tf.Module):
         Indicates which distribution sampling occurs over (can be 'dist_a' or 'dist_b')
     """
         super(InfoRegularizer, self).__init__(name=name, **kwargs)
-        self.weight = tf.convert_to_tensor(weight)
+        self.weight = tf.convert_to_tensor(weight, dtype=tf.float32)
         if sample_dist in ['dist_a', 'dist_b']:
             self.sample_dist = sample_dist
         else:
@@ -253,8 +260,19 @@ class LogProbRegularizer(InfoRegularizer):
   The first distribution is ignored. This is intended to be used in the case of a deterministic encoder where the
   KL divergence diverges and should be ignored during training. In that case, we may only want to train a flow that
   defines the prior, using its negative log-probablity on the deterministically encoded samples to learn it.
-  A similar strategy could be employed to train a CG model on a deterministic mapping. In that case, the "potential
-  energy" function of the dist_b (prior) object would just need to be called through a log_prob method.
+  Note that if dist_a is a tfp.distributions.Deterministic distribution, no samples are necessary, as the call
+  to dist_a.sample() that will occur during the __call__ method of InfoRegularizer will just return exactly the
+  deterministically obtained values that defined the distribution (the "sample"). Otherwise, a sample MUST be
+  provided if dist_a is set to None or a place-holder distribution object, otherwise "sampling" will not be
+  performed appropriately. The intention of this regularizer is to be dropped in in place of KLDivergenceEstimate
+  without modification to a model. In other words, a call to a generic regularizer in a VAE model can still
+  be passed dist_a as the encoding distribution and dist_b as the prior, even if dist_a is deterministic.
+  If you do use a Deterministic distribution object for dist_a, though, this will return the same thing
+  as KLDivergenceEstimate. Can consider removing.
+
+  A similar strategy as described above could be employed to train a CG model on a deterministic mapping.
+  In that case, the "potential energy" function of the dist_b (prior) object would just need to be called through
+  a log_prob method.
   """
 
     def call(self, dist_a, dist_b, samples):
@@ -275,7 +293,7 @@ class LogProbRegularizer(InfoRegularizer):
     loss : tf.Tensor
         The negative log-likelihood of the samples under the prior (dist_b).
     """
-        return -dist_b.log_prob(samples)
+        return tf.reduce_mean(-dist_b.log_prob(samples))
 
 
 class ReverseKLDivergenceEstimate(InfoRegularizer):

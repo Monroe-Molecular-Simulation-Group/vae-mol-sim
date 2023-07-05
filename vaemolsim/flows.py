@@ -470,7 +470,7 @@ class RQSSplineMAF(tf.keras.layers.Layer):
   batch_norm : bool
       Whether or not batch normalization layers are placed between spline bijectors.
   conditional : bool
-      Whether or not conditional inputs are accepted. This is always False for this class.
+      Whether or not conditional inputs are accepted.
   """
 
     def __init__(self, num_blocks=2, rqs_params={}, batch_norm=False, name='rqs_MAF', **kwargs):

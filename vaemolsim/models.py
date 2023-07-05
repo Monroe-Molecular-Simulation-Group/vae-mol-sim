@@ -102,6 +102,8 @@ class MappingToDistribution(tf.keras.layers.Layer):
         return config
 
 
+# Consider adding custom predict step to generate x samples from the model
+# (e.g., draw from prior, produce decoder distribution, and draw from that)
 class VAE(tf.keras.Model):
     """
   A standard variational autoencoder model.
