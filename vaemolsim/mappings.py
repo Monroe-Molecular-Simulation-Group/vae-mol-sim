@@ -420,7 +420,7 @@ class DistanceSelection(tf.keras.layers.Layer):
         if particle_info is not None:
             select_info = tf.ragged.boolean_mask(particle_info, mask).to_tensor(default_value=0.0,
                                                                                 shape=(batch_size, self.max_included,
-                                                                                       particle_info.shape[-1]))
+                                                                                       tf.shape(particle_info)[-1]))
             return select_coords, select_info
         else:
             return select_coords
