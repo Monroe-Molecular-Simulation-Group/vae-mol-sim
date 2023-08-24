@@ -6,6 +6,8 @@ tf.keras.Model class defined here for convenience of training only
 normalizing flows.
 """
 
+import numpy as np
+
 import tensorflow as tf
 import tensorflow_probability as tfp
 
@@ -473,14 +475,18 @@ class RQSSplineMAF(tf.keras.layers.Layer):
       Whether or not conditional inputs are accepted.
   """
 
-    def __init__(self, num_blocks=2, rqs_params={}, batch_norm=False, name='rqs_MAF', **kwargs):
+    def __init__(self, num_blocks=2, order_seed=None, rqs_params={}, batch_norm=False, name='rqs_MAF', **kwargs):
         """
       Creates RQSSplineMAF layer instance
 
       Parameters
       ----------
       num_blocks : int, default 2
-          Number of RealNVP blocks (data splits, should be at least 2)
+          Number of blocks (applied RQS bijectors)
+      order_seed : int, default None
+          A random number seed for determining input order for blocks with 'random' input order
+          By default, all middle blocks will have a 'random' input order, but can make deterministic
+          if set seed here (allows for saving/loading model/weights)
       rqs_params : dict, default {}
           Dictionary of keyword arguments for MaskedSplineBijector
       batch_norm : bool, default False
@@ -488,6 +494,7 @@ class RQSSplineMAF(tf.keras.layers.Layer):
     """
         super(RQSSplineMAF, self).__init__(name=name, **kwargs)
         self.num_blocks = num_blocks
+        self.order_seed = order_seed
         self.rqs_params = rqs_params
         self.batch_norm = batch_norm
         self.conditional = rqs_params.get('conditional', False)
@@ -498,6 +505,9 @@ class RQSSplineMAF(tf.keras.layers.Layer):
         # Want to create an MAF bijector with a spline bijector for each block
         block_list = []
 
+        # Set up random number generator for order
+        rng = np.random.default_rng(self.order_seed)
+
         for i in range(self.num_blocks):
 
             # Set up order to alternate on ends and random on all blocks in between
@@ -507,7 +517,11 @@ class RQSSplineMAF(tf.keras.layers.Layer):
             elif i == (self.num_blocks - 1):
                 order = 'left-to-right'
             else:
-                order = 'random'
+                # Will randomize based on rng with self.order_seed as seed
+                # Means will have different order for every internal layer, but
+                # if self.order_seed is not None, all orders will be reproducible
+                order = np.arange(start=1, stop=self.data_dim + 1)
+                rng.shuffle(order)
 
             if i != 0 and self.batch_norm:
                 block_list.append(tfp.bijectors.BatchNormalization(training=False))
@@ -577,7 +591,12 @@ class RQSSplineMAF(tf.keras.layers.Layer):
 
     def get_config(self):
         config = super(RQSSplineMAF, self).get_config()
-        config.update({"num_blocks": self.num_blocks, "rqs_params": self.rqs_params, "batch_norm": self.batch_norm})
+        config.update({
+            "num_blocks": self.num_blocks,
+            "order_seed": self.order_seed,
+            "rqs_params": self.rqs_params,
+            "batch_norm": self.batch_norm
+        })
         return config
 
 
