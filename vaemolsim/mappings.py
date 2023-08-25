@@ -313,11 +313,13 @@ class DistanceSelection(tf.keras.layers.Layer):
   the output have max_included particles. In other words, the input should be of shape
   (N_batch, N_particles, 3) and the output will be of shape (N_batch, max_included, 3).
   To reach max_included, zeros may be added to pad the particle coordinates within the
-  cutoff. Having a fixed size is necessary for further operations with neural networks,
-  so max_included should be selected to ensure that it is always as large or larger than
-  the maximum number of particles within the specified cutoff. The reference coordinates
-  must also be supplied when calling this layer, and should be in the shape (N_batch, 3),
-  or at least reshapable to (N_batch, 1, 3).
+  cutoff. If more than max_included particles are in the cutoff, they will be truncated,
+  sorted so that the nearest particles are ensured to be included. Having a fixed size is
+  necessary for further operations with neural networks. So if you want this function to
+  serve as only a distance-based cutoff, mmax_included should be selected to ensure that
+  it is always as large or larger than the maximum number of particles within the specified
+  cutoff. The reference coordinates must also be supplied when calling this layer, and
+  should be in the shape (N_batch, 3), or at least reshapable to (N_batch, 1, 3).
 
   Attributes
   ----------
@@ -339,7 +341,8 @@ class DistanceSelection(tf.keras.layers.Layer):
         The distance cutoff with particles closer than this distance included.
     max_included : int, default 50
         Maximum number of particles within the cutoff. Can determine from physics (RDF, etc.).
-        Must set upper number of particles so that pads to this size for well-defined networks.
+        If want to function as only distance-based cutoff, set to more than expected number.
+        Otherwise, applies both number AND distance-based cutoff.
     box_lengths : list-like, default None
         A list, array, or tensor with 3 elements representing the simulation box edge lengths.
         If provided, assumes the box is a fixed size and wraps periodically when computing
@@ -358,9 +361,9 @@ class DistanceSelection(tf.keras.layers.Layer):
 
     def call(self, coords, ref, box_lengths=None, particle_info=None):
         """
-    Selects all particles within the cutoff distance and pads.
+    Selects all particles within the cutoff distance and pads (or truncates).
 
-    If particle_info is also provided, also masks and pads that information.
+    If particle_info is also provided, also masks and pads/truncates that information.
 
     Parameters
     ----------
@@ -408,19 +411,45 @@ class DistanceSelection(tf.keras.layers.Layer):
         elif self.box_lengths is not None:
             local_coords = local_coords - self.box_lengths * tf.round(local_coords / self.box_lengths)
 
+        # Since applying self.max_included may remove some within cutoff, make sure priortize nearest
+        # To do that, need to sort, but can only sort regular tensors, not ragged
+        # Will pad to largest size necessary (config with most particles) with large numbers
+        local_coords = local_coords.to_tensor(default_value=tf.float32.max)
+
+        # And if max particles is less than self.max_included, must pad
+        max_shape = tf.shape(local_coords)[1]
+        if max_shape < self.max_included:
+            local_coords = tf.pad(
+                local_coords,
+                [[0, 0], [0, self.max_included - max_shape], [0, 0]],
+                constant_values=tf.float32.max,
+            )
+
         # Get squared distances
         dists_sq = tf.reduce_sum(local_coords * local_coords, axis=-1)
 
+        # Take nearest self.max_included based on indices
+        # Negate since top_k takes largest values
+        near_dists, near_inds = tf.math.top_k(-dists_sq, k=self.max_included)
+
+        # Select out nearest coordinates
+        select_coords = tf.gather(local_coords, near_inds, axis=1, batch_dims=1)
+
         # Mask based on cutoff
-        # Pad coords as needed, returning tensor, not ragged tensor
-        mask = (dists_sq <= self.sq_cut)
-        select_coords = tf.ragged.boolean_mask(local_coords, mask).to_tensor(default_value=0.0,
-                                                                             shape=(batch_size, self.max_included, 3))
+        # Expand dimensions of mask so works with tf.where
+        mask = tf.expand_dims((-near_dists <= self.sq_cut), axis=-1)
+        select_coords = tf.where(mask, select_coords, tf.zeros_like(select_coords))
 
         if particle_info is not None:
-            select_info = tf.ragged.boolean_mask(particle_info, mask).to_tensor(default_value=0.0,
-                                                                                shape=(batch_size, self.max_included,
-                                                                                       tf.shape(particle_info)[-1]))
+            particle_info = particle_info.to_tensor(default_value=0.0)
+            if max_shape < self.max_included:
+                particle_info = tf.pad(
+                    particle_info,
+                    [[0, 0], [0, self.max_included - max_shape], [0, 0]],
+                    constant_values=0.0,
+                )
+            select_info = tf.gather(particle_info, near_inds, axis=1, batch_dims=1)
+            select_info = tf.where(mask, select_info, tf.zeros_like(select_info))
             return select_coords, select_info
         else:
             return select_coords
