@@ -134,6 +134,19 @@ class TestFlowedDistribution:
         assert isinstance(dist, tfp.distributions.Distribution)  # Make sure it's a distribution
         assert hasattr(dist, "bijector")  # Make sure it has a transform
 
+    @pytest.mark.parametrize("f_class", [flows.RQSSplineRealNVP, flows.RQSSplineMAF])
+    def test_static_dist(self, f_class):
+        l_dist = tfp.layers.DistributionLambda(
+            make_distribution_fn=lambda t: tfp.distributions.Blockwise([tfp.distributions.Normal(
+                loc=0.0, scale=1.0)] * 2 + [tfp.distributions.VonMises(loc=0.0, concentration=1.0)], ))
+        l_sample = l_dist(None).sample()
+        f = f_class()
+        _ = f(l_sample)
+        fd = dists.FlowedDistribution(f, l_dist)
+        dist = fd(None)
+        assert isinstance(dist, tfp.distributions.Distribution)
+        assert hasattr(dist, "bijector")
+
     def test_cond_input(self):
         # Just test with independent
         # Doesn't make sense to have autoregressive distribution AND autoregressive flow

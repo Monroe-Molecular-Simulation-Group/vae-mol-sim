@@ -10,7 +10,142 @@ VAE models.
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from . import mappings, losses
+from . import dists, mappings, losses
+
+
+class FlowModel(tf.keras.Model):
+    """
+  Model wrapper around FlowedDistribution layer so can quickly train in isolation.
+
+  The output of a call to this model is a distribution transformed by the flow.
+  As such, the appropriate loss is the losses.LogProbLoss(), or something else that
+  will use a distribution that is provided.
+
+  The primary purpose is training a flow to only transform from one distribution to another
+  and that is the only objective. Specifically, if you have samples from a distribution you
+  want to learn how to generate so that the loss is the log-probability of those samples
+  under the flowed distribution (latent distribution passed through the flow).
+
+  Attributes
+  ----------
+  flow : tfp.bijector object or layer applying a bijector
+      Flow that is applied to transform the latent distribution.
+  latent_dist : tfp.layers.Distribution object
+      Distribution layer that produces distribution that flow acts on.
+      The inputs to a call will be provided to latent_dist to produce the latent
+      distribution. If the inputs should be ignored (i.e., the latent distribution
+      is static), this should be a DistrbutionLambda layer with a make_distribution_fn
+      that ignores inputs. For example:
+
+      static_dist = tfp.layers.DistributionLambda(make_distribution_fn=lambda t: tfp.distributions.Blockwise(
+                        [tfp.distributions.Normal(loc=0.0, scale=1.0)]*2
+                         + [tfp.distributions.VonMises(loc=0.0, concentration=1.0)],
+                        ))
+  mapping : layer, default None
+      A layer mapping inputs to the input for a distribution creation layer. If not specified
+      (default of None) will infer this from the params_size attribute of the distribution
+      creation layer.
+  """
+
+    def __init__(self, flow, latent_dist, mapping=None, name='flow_model', **kwargs):
+        """
+    Creates a FlowModel model instance
+
+    Parameters
+    ----------
+    flow : tfp.bijector object or layer applying bijector
+        Flow that will be applied in order to transform latent distribution.
+    latent_dist : tfp.layers.Distribution object
+        Layer that produces distribution that flow acts upon in the forward
+        direction to produce samples.
+    mapping : layer, default None
+        A layer mapping inputs to the input for a distribution creation layer. If not specified
+        (default of None) will infer this from the params_size attribute of the distribution
+        creation layer.
+    """
+        super(FlowModel, self).__init__(name=name, **kwargs)
+        self.flowed_dist = dists.FlowedDistribution(flow, latent_dist)
+        if mapping is None:
+            if isinstance(latent_dist, tfp.layers.DistributionLambda):
+                self.mapping = mapping
+            else:
+                self.mapping = mappings.FCDeepNN(self.flowed_dist.params_size())
+        else:
+            if isinstance(latent_dist, tfp.layers.DistributionLambda):
+                print("Warning: for static distribution (tfp.layers.DistributionLambda as "
+                      "latent distribution, cannot have mapping, so setting to None.")
+                self.mapping = None
+
+    def call(self, inputs, training=False):
+        """
+    Applies a flow to the latent distribution.
+
+    Parameters
+    ----------
+    inputs : tf.Tensor
+        Samples from the distribution we want to learn (forward application of the flow
+        produces this distribution). If latent_dist is a distribution-producing layer,
+        the inputs will be used by it to produce a distribution (likely including a
+        MappingToDistribution layer).
+    conditional_input : tf.Tensor
+        Optional conditional input to provide to the flow.
+    training : bool, default False
+        Whether or not we are training. May be important if have block normalizations in flow layer.
+
+    Returns
+    -------
+    dist : tfp.distributions.TransformedDistribution instance
+    """
+        # Apply mapping if present
+        if self.mapping is not None:
+            mapped = self.mapping(inputs, training=training)
+        else:
+            mapped = inputs
+
+        # And pass through flow
+        if self.flowed_dist.conditional:
+            return self.flowed_dist(mapped, conditional_input=inputs, training=training)
+        else:
+            return self.flowed_dist(mapped, training=training)
+
+    # Prediction is a bit shaky due to odd behavior with sample shape
+    def predict_step(self, inputs):
+        """
+    A custom predict step makes the model more useful.
+
+    NOT TESTED - USE AT OWN RISK
+    Currently have issues with the correct inferencing of the sample shape.
+    Some distributions work fine, while others crash and not sure why.
+
+    fit and evaluate will compute losses (and metrics) with training set to True and False, respectively.
+    The returned loss will typically be the average negative log-probability over the batch.
+    predict will actually draw a sample from the learned flowed distribution.
+    You can always access whatever you need based on model.flow and model.latent_dist, or calling the model..
+    But this is a short-cut.
+
+    Parameters
+    ----------
+    inputs : tf.Tensor
+        Inputs to the model.
+    conditional_input : tf.Tensor
+        Optional conditional inputs.
+
+    Returns
+    -------
+    z : tf.Tensor
+        A transformed sample under flow.
+    """
+        x, _, _ = tf.keras.utils.unpack_x_y_sample_weight(inputs)
+        out_dist = self(x, training=False)
+        return out_dist.sample()
+
+    def get_config(self):
+        config = super(FlowModel, self).get_config()
+        config.update({
+            "flow": self.flow,
+            "latent_dist": self.latent_dist,
+        })
+        return config
 
 
 # If reconfigure this right, can allow mappings that include a masking and embedding...

@@ -221,32 +221,3 @@ class TestRQSSplineMAF(TestRQSSplineRealNVP):
         _ = t_dist.log_prob(new_sample)  # And calculate a log probability
         assert isinstance(t_dist, tfp.distributions.Distribution)  # Make sure it's a distribution
         assert hasattr(t_dist, "bijector")  # Make sure it has a transform
-
-
-class TestFlowModel:
-
-    target_dist = tfp.distributions.Independent(tfp.distributions.Uniform(low=[-10.0] * 5, high=[10.0] * 5),
-                                                reinterpreted_batch_ndims=1)
-    target_sample = target_dist.sample(10)
-
-    @pytest.mark.parametrize("f", [
-        flows.RQSSplineRealNVP(),
-        flows.RQSSplineRealNVP(batch_norm=True),
-        flows.RQSSplineMAF(),
-        flows.RQSSplineMAF(batch_norm=True),
-    ])
-    def test_model(self, f, normal_dist, normal_sample):
-        _ = f(normal_sample)
-        m = flows.FlowModel(f, normal_dist)
-        _ = m(self.target_sample)  # Make sure can pass through model
-        # Make sure can compile
-        m.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3))
-        # And try fitting... may be slow, though
-        history = m.fit(self.target_sample, epochs=1, verbose=0)
-        assert history is not None
-        # And test evaulation
-        eval_loss = m.evaluate(self.target_sample, verbose=0)
-        assert eval_loss is not None
-        # And prediction
-        pred = m.predict(normal_sample, verbose=0)
-        assert pred is not None

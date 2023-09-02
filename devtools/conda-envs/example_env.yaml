@@ -23,18 +23,7 @@ dependencies:
   - sphinx<7.0
   - sphinx_rtd_theme
   - pip
-#  - pip:
-#      - tensorflow
-#      - tensorflow-probability
-#      - geometric-algebra-attention
-
-# On an M2 mac, need to comment out the pip install tensorflow and tensorflow-probability sections
-# Then follow these steps:
-#   conda create -n vae-mol-sim python=3.10
-#   conda activate vae-mol-sim
-#   conda install -c apple tensorflow-deps
-#   conda env update -n vae-mol-sim --file example_env.yaml --prune
-#   pip install tensorflow-macos
-#   pip install tensorflow-metal
-#   pip install tensorflow-probability
-#   pip install geometric-algebra-attention
+  - pip:
+      - tensorflow
+      - tensorflow-probability
+      - geometric-algebra-attention

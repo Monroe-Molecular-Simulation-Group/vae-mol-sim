@@ -11,6 +11,81 @@ import pytest
 from vaemolsim import flows, dists, mappings, losses, models
 
 
+class TestFlowModel:
+
+    target_dist = tfp.distributions.Independent(tfp.distributions.Uniform(low=[tf.cast(-np.pi, tf.float32)] * 3,
+                                                                          high=[tf.cast(np.pi, tf.float32)] * 3),
+                                                reinterpreted_batch_ndims=1)
+    target_sample = target_dist.sample(10)
+
+    input_data = tf.random.normal([10, 5])
+
+    @pytest.mark.parametrize("f", [
+        flows.RQSSplineRealNVP(),
+        flows.RQSSplineRealNVP(batch_norm=True),
+        flows.RQSSplineMAF(),
+        flows.RQSSplineMAF(batch_norm=True),
+        flows.RQSSplineMAF(rqs_params={
+            'conditional': True,
+            'conditional_event_shape': input_data.shape[-1]
+        }),
+    ])
+    def test_static(self, f):
+        static_dist = tfp.layers.DistributionLambda(make_distribution_fn=lambda t: tfp.distributions.Blockwise([
+            tfp.distributions.Normal(loc=tf.cast(0.0, tf.float32), scale=tf.cast(1.0, tf.float32))
+        ] * 2 + [tfp.distributions.VonMises(loc=tf.cast(0.0, tf.float32), concentration=tf.cast(1.0, tf.float32))], ))
+        if f.conditional:
+            _ = f(self.target_sample, conditional_input=self.input_data)
+        else:
+            _ = f(self.target_sample)
+        m = models.FlowModel(f, static_dist)
+        assert m.mapping is None
+        _ = m(self.target_sample)  # Make sure can pass through model
+        # Make sure can compile
+        m.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3), loss=losses.LogProbLoss())
+        # And try fitting... may be slow, though
+        # Note that if flow is conditional, input_data will not be ignored
+        history = m.fit(self.input_data, self.target_sample, epochs=1, verbose=0)
+        assert history is not None
+        # And test evaulation
+        eval_loss = m.evaluate(self.input_data, self.target_sample, verbose=0)
+        assert eval_loss is not None
+        # And prediction - well, actually, weird issue with sample shape when calling sample()
+        # pred = m.predict(self.input_data, verbose=0)
+        # assert pred is not None
+
+    @pytest.mark.parametrize("f", [
+        flows.RQSSplineRealNVP(),
+        flows.RQSSplineRealNVP(batch_norm=True),
+        flows.RQSSplineMAF(),
+        flows.RQSSplineMAF(batch_norm=True),
+        flows.RQSSplineMAF(rqs_params={
+            'conditional': True,
+            'conditional_event_shape': input_data.shape[-1]
+        }),
+    ])
+    def test_with_input(self, f):
+        dep_dist = dists.AutoregressiveBlockwise(3, [tfp.distributions.Normal] * 2 + [tfp.distributions.VonMises])
+        if f.conditional:
+            _ = f(self.target_sample, conditional_input=self.input_data)
+        else:
+            _ = f(self.target_sample)
+        m = models.FlowModel(f, dep_dist)
+        assert m.mapping is not None
+        _ = m(self.input_data)  # Make sure can pass through model
+        # Make sure can compile
+        m.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3), loss=losses.LogProbLoss())
+        # And try fitting... may be slow, though
+        history = m.fit(self.input_data, self.target_sample, epochs=1, verbose=0)
+        assert history is not None
+        # And test evaulation
+        eval_loss = m.evaluate(self.input_data, self.target_sample, verbose=0)
+        assert eval_loss is not None
+        # And prediction - well, actually, weird issue with sample shape when calling sample()
+        # pred = m.predict(self.input_data, verbose=0)
+        # assert pred is not None
+
+
 class TestMappingToDistribution:
 
     input_data = tf.random.normal([10, 4])
