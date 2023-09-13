@@ -35,12 +35,18 @@ class FlowModel(tf.keras.Model):
       The inputs to a call will be provided to latent_dist to produce the latent
       distribution. If the inputs should be ignored (i.e., the latent distribution
       is static), this should be a DistrbutionLambda layer with a make_distribution_fn
-      that ignores inputs. For example:
-
+      that ignores inputs EXCEPT for the batch shape (if you want the produced
+      distribution to have the same batch shape as the target).
+      For example:
       static_dist = tfp.layers.DistributionLambda(make_distribution_fn=lambda t: tfp.distributions.Blockwise(
-                        [tfp.distributions.Normal(loc=0.0, scale=1.0)]*2
-                         + [tfp.distributions.VonMises(loc=0.0, concentration=1.0)],
+        [tfp.distributions.Normal(loc=tf.zeros((tf.shape(t)[0],)), scale=tf.ones((tf.shape(t)[0],)))]*2
+        + [tfp.distributions.VonMises(loc=tf.zeros((tf.shape(t)[0],)), concentration=tf.ones((tf.shape(t)[0],)))],
                         ))
+      Note that getting the batch shape right is not strictly necessary. A distribution
+      with no batch shape will produce a log-probability for each sample of a batch the
+      same as a distribution with a batch shape. However, prediction will work better
+      if the batch shape is taken from the inputs. Otherwise, a batch only produces a
+      single sample.
   mapping : layer, default None
       A layer mapping inputs to the input for a distribution creation layer. If not specified
       (default of None) will infer this from the params_size attribute of the distribution
@@ -108,27 +114,20 @@ class FlowModel(tf.keras.Model):
         else:
             return self.flowed_dist(mapped, training=training)
 
-    # Prediction is a bit shaky due to odd behavior with sample shape
     def predict_step(self, inputs):
         """
     A custom predict step makes the model more useful.
 
-    NOT TESTED - USE AT OWN RISK
-    Currently have issues with the correct inferencing of the sample shape.
-    Some distributions work fine, while others crash and not sure why.
-
     fit and evaluate will compute losses (and metrics) with training set to True and False, respectively.
     The returned loss will typically be the average negative log-probability over the batch.
     predict will actually draw a sample from the learned flowed distribution.
-    You can always access whatever you need based on model.flow and model.latent_dist, or calling the model..
-    But this is a short-cut.
+    You can always access whatever you need based on model.flowed_dist.flow and model.flowed_dist.latent_dist.
+    Or by calling the model on inputs, but this is a short-cut.
 
     Parameters
     ----------
     inputs : tf.Tensor
         Inputs to the model.
-    conditional_input : tf.Tensor
-        Optional conditional inputs.
 
     Returns
     -------
@@ -142,8 +141,9 @@ class FlowModel(tf.keras.Model):
     def get_config(self):
         config = super(FlowModel, self).get_config()
         config.update({
-            "flow": self.flow,
-            "latent_dist": self.latent_dist,
+            "flow": self.flowed_dist.flow,
+            "latent_dist": self.flowed_dist.latent_dist,
+            "mapping": self.mapping,
         })
         return config
 
@@ -538,6 +538,28 @@ class BackmappingOnly(tf.keras.Model):
         decode_dist = self.decode_dist(local_descriptors, training=training)
 
         return decode_dist
+
+    def predict_step(self, inputs):
+        """
+    A custom predict step to make generation (sampling) of configurations easier.
+
+    fit and evaluate will compute losses (and metrics) with training set to True and False, respectively.
+    The returned loss will typically be the average negative log-probability over the batch.
+    predict will actually draw a sample from the learned distribution given inputs.
+
+    Parameters
+    ----------
+    inputs : list of tf.Tensor
+        Inputs to the model (see call method).
+
+    Returns
+    -------
+    z : tf.Tensor
+        A sample from the predicted distribution.
+    """
+        x, _, _ = tf.keras.utils.unpack_x_y_sample_weight(inputs)
+        out_dist = self(x, training=False)
+        return out_dist.sample()
 
     def get_config(self):
         config = super(BackmappingOnly, self).get_config()

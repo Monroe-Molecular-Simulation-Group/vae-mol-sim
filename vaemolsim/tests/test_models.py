@@ -31,9 +31,10 @@ class TestFlowModel:
         }),
     ])
     def test_static(self, f):
-        static_dist = tfp.layers.DistributionLambda(make_distribution_fn=lambda t: tfp.distributions.Blockwise([
-            tfp.distributions.Normal(loc=tf.cast(0.0, tf.float32), scale=tf.cast(1.0, tf.float32))
-        ] * 2 + [tfp.distributions.VonMises(loc=tf.cast(0.0, tf.float32), concentration=tf.cast(1.0, tf.float32))], ))
+        static_dist = tfp.layers.DistributionLambda(make_distribution_fn=lambda t: tfp.distributions.Blockwise(
+            [tfp.distributions.Normal(loc=tf.zeros((tf.shape(t)[0], )), scale=tf.ones((tf.shape(t)[0], )))] * 2 +
+            [tfp.distributions.VonMises(loc=tf.zeros((tf.shape(t)[0], )), concentration=tf.ones(
+                (tf.shape(t)[0], )))], ))
         if f.conditional:
             _ = f(self.target_sample, conditional_input=self.input_data)
         else:
@@ -50,9 +51,10 @@ class TestFlowModel:
         # And test evaulation
         eval_loss = m.evaluate(self.input_data, self.target_sample, verbose=0)
         assert eval_loss is not None
-        # And prediction - well, actually, weird issue with sample shape when calling sample()
-        # pred = m.predict(self.input_data, verbose=0)
-        # assert pred is not None
+        # And prediction
+        pred = m.predict(self.input_data, verbose=0)
+        assert pred is not None
+        assert pred.shape == (self.input_data.shape[0], self.target_sample.shape[-1])
 
     @pytest.mark.parametrize("f", [
         flows.RQSSplineRealNVP(),
@@ -81,9 +83,10 @@ class TestFlowModel:
         # And test evaulation
         eval_loss = m.evaluate(self.input_data, self.target_sample, verbose=0)
         assert eval_loss is not None
-        # And prediction - well, actually, weird issue with sample shape when calling sample()
-        # pred = m.predict(self.input_data, verbose=0)
-        # assert pred is not None
+        # And prediction
+        pred = m.predict(self.input_data, verbose=0)
+        assert pred is not None
+        assert pred.shape == (self.input_data.shape[0], self.target_sample.shape[-1])
 
 
 class TestMappingToDistribution:
@@ -296,3 +299,10 @@ def test_backmappingonly():
     backmap.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3), loss=losses.LogProbLoss())
     history = backmap.fit([ref_coords, all_coords, all_info], target_data, batch_size=20, epochs=1, verbose=0)
     assert history is not None
+    # And test evaulation
+    eval_loss = backmap.evaluate([ref_coords, all_coords, all_info], target_data, batch_size=20, verbose=0)
+    assert eval_loss is not None
+    # And prediction
+    pred = backmap.predict([ref_coords, all_coords, all_info], verbose=0)
+    assert pred is not None
+    assert pred.shape == (ref_coords.shape[0], 6)
