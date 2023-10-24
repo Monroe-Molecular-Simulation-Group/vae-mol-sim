@@ -87,7 +87,7 @@ class SplineBijector(tf.keras.layers.Layer):
         # Create an initial neural net layer
         self.d1 = tf.keras.layers.Dense(self.hidden_dim,
                                         name='d1',
-                                        activation=tf.nn.relu,
+                                        activation=tf.nn.tanh,
                                         kernel_initializer=self.kernel_initializer)
         # Create neural nets for widths, heights, and slopes
         self.bin_widths = tf.keras.layers.Dense(self.data_dim * self.num_bins,
@@ -126,17 +126,18 @@ class SplineBijector(tf.keras.layers.Layer):
         # Need to check some things based on shape of input
         # First, make sure it has a batch dimension
         in_shape = tf.shape(input_tensor)
-        if len(tf.shape(input_tensor)) <= 1:
+        if len(in_shape) <= 1:
             input_tensor = tf.reshape(input_tensor, (1, -1))
 
         # Next, if have event_shape = 1 (transforming 1D distribution), will mask nothing with RealNVP
         # As a result, what is passed will have zero last dimension
         # Can't use data itself to transform itself, so RealNVP just passes something with zero dimension
         # So just learn spline transformations that start with ones as input
-        if tf.shape(input_tensor)[-1] == 0:
-            input_tensor = tf.ones((tf.shape(input_tensor)[0], 1))
+        if input_tensor.shape[-1] == 0:
+            d1_out = self.d1(tf.ones((tf.shape(input_tensor)[0], 1)))
+        else:
+            d1_out = self.d1(input_tensor)
 
-        d1_out = self.d1(input_tensor)
         # Use nets to get spline parameters
         bw = self.bin_widths(d1_out)
         # Apply "activations" manually just to be safe
