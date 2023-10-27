@@ -258,6 +258,7 @@ class AutoregressiveBlockwise(IndependentBlockwise):
         *args,
         conditional=False,
         conditional_event_shape=None,
+        auto_net_params={},
         name='autoregressive_blockwise',
         **kwargs,
     ):
@@ -277,6 +278,7 @@ class AutoregressiveBlockwise(IndependentBlockwise):
 
         self.conditional = conditional
         self.conditional_event_shape = conditional_event_shape
+        self.auto_net_params = auto_net_params
 
     def build(self, input_shape):
         # Nice to have build method here so can create own autoregressive network
@@ -291,7 +293,8 @@ class AutoregressiveBlockwise(IndependentBlockwise):
         self.auto_net = tfp.bijectors.AutoregressiveNetwork(max(self.param_nums),
                                                             self.num_dofs,
                                                             conditional=self.conditional,
-                                                            conditional_event_shape=self.conditional_event_shape)
+                                                            conditional_event_shape=self.conditional_event_shape,
+                                                            **self.auto_net_params)
 
     def call(self, inputs, conditional_input=None):
         """

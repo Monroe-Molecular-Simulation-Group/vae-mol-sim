@@ -150,9 +150,9 @@ class FlowModel(tf.keras.Model):
 
 # If reconfigure this right, can allow mappings that include a masking and embedding...
 # Maybe that's too much, but would be possible
-class MappingToDistribution(tf.keras.layers.Layer):
+class MappingToDistribution(tf.keras.Model):
     """
-  A combination of a mapping layer and a distribution creation layer
+  A combination of a mapping layer and a distribution creation layer, bundled into a model.
 
   This is likely to represent an encoder or a decoder, where a mapping or projection
   is applied with neural networks before defining a probability distribution. This
@@ -305,10 +305,12 @@ class VAE(tf.keras.Model):
           method on the input samples.
     """
 
-        prior_dist = self.prior(None, training=training)  # Layer, so needs inputs, but will ignore so pass None
         encode_dist = self.encoder(inputs, training=training)
         # Consider adding parameter to control sampling more than just once per input in the batch?
         encode_sample = encode_dist.sample()
+
+        # Build prior distribution - should only use encode_sample to build correct shape, if at all
+        prior_dist = self.prior(encode_sample, training=training)
 
         reg_loss = self.regularizer(encode_dist, prior_dist, encode_sample)
         self.add_loss(reg_loss)
