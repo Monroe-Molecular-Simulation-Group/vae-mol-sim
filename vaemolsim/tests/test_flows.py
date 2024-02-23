@@ -12,6 +12,25 @@ import pytest
 from vaemolsim import flows
 
 
+def test_domain_transform():
+    doms = [[0, 20], [-5, 5], [0, np.pi], [0, 1]]
+    target = [0, 1]
+    x = [np.linspace(a, b, 10) for a, b in doms]
+    x = np.vstack(x).T
+
+    # Test moving to target
+    bij_to = flows.make_domain_transform(doms, target)
+    y_to = bij_to(x)
+    assert y_to.shape == x.shape
+    assert np.all(np.min(y_to, axis=0) == 0.0)
+    assert np.all(np.max(y_to, axis=0) == 1.0)
+
+    # Test moving from target
+    bij_from = flows.make_domain_transform(doms, target, from_target=True)
+    y_from = bij_from(y_to)
+    assert np.allclose(y_from, x)
+
+
 class TestSplineBijector:
 
     # Ignore shape specification for input data here
@@ -151,7 +170,7 @@ class TestRQSSplineRealNVP:
         f = self.flow_class()
         no_train_sample = f(normal_sample)
         train_sample = f(normal_sample, training=True)
-        assert len(f.chain.bijectors) == f.num_blocks
+        assert len(f.chain.bijectors) == f.num_blocks + 2
         assert no_train_sample.shape == normal_sample.shape
         assert not np.all(no_train_sample == normal_sample)
         np.testing.assert_array_equal(train_sample, no_train_sample)
@@ -172,7 +191,7 @@ class TestRQSSplineRealNVP:
         del train_sample
         assert np.all(train_bool)
         assert f.num_blocks == 4
-        assert len(f.chain.bijectors) == (2 * f.num_blocks - 1)
+        assert len(f.chain.bijectors) == (2 * f.num_blocks - 1 + 2)
         assert no_train_sample.shape == normal_sample.shape
         assert not np.all(no_train_sample == normal_sample)
 

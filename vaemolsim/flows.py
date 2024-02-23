@@ -12,6 +12,54 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 
 
+def make_domain_transform(domain_list, target, from_target=False):
+    """
+    Generates chained bijector to transform list of domains to a single target or vice versa.
+
+    Parameters
+    ----------
+    domain_list : list of 2-tuples
+        A list of 2-tuples or lists, with each being the min and max of a domain
+        to transform, e.g., [(min1, max1), (min2, max2)]. The number of domains
+        is interpreted as the event shape of the bijector, or the number of
+        dimensions to transform. If from_target is True, moves instead from
+        target to the domain_list.
+    target : list or tuple
+        Length 2 list or tuple specifying the target domain (min first, then max).
+        (Or starting domain if from_target=True)
+    from_target : bool, default False
+        Whether or not to transform to or from the target to the domains in domain_list.
+    """
+    # Get target domain "length" and mean
+    t_l = target[1] - target[0]
+    t_mean = 0.5 * (target[1] + target[0])
+
+    # Get all domain lengths and means
+    d_l = np.array([(b - a) for a, b in domain_list], dtype='float32')
+    d_mean = np.array([0.5 * (a + b) for a, b in domain_list], dtype='float32')
+
+    # For each domain, shift, scale, then shift, with direction based on from_target
+    if from_target:
+        shift1 = -t_mean * np.ones_like(d_mean)
+        scale = d_l / t_l
+        shift2 = d_mean
+    else:
+        shift1 = -d_mean
+        scale = t_l / d_l
+        shift2 = t_mean * np.ones_like(d_mean)
+
+    # Create blockwise bijectors to simultaneously apply to all domains
+    # (for shift, scale and shift)
+    bij_shift1 = tfp.bijectors.Blockwise([tfp.bijectors.Shift(s1) for s1 in shift1])
+    bij_scale = tfp.bijectors.Blockwise([tfp.bijectors.Scale(s) for s in scale])
+    bij_shift2 = tfp.bijectors.Blockwise([tfp.bijectors.Shift(s2) for s2 in shift2])
+
+    # Combine together into a chain, noting that chain applies bijectors in reverse order
+    bij_chain = tfp.bijectors.Chain(bijectors=[bij_shift2, bij_scale, bij_shift1])
+
+    return bij_chain
+
+
 class SplineBijector(tf.keras.layers.Layer):
     """
   Layer to implement a spline bijector function.
@@ -191,7 +239,14 @@ class RQSSplineRealNVP(tf.keras.layers.Layer):
       Whether or not conditional inputs are accepted. This is always False for this class.
   """
 
-    def __init__(self, num_blocks=4, rqs_params={}, batch_norm=False, name='rqs_realNVP', **kwargs):
+    def __init__(self,
+                 num_blocks=4,
+                 rqs_params={},
+                 batch_norm=False,
+                 before_flow_transform=tfp.bijectors.Identity(),
+                 after_flow_transform=tfp.bijectors.Identity(),
+                 name='rqs_realNVP',
+                 **kwargs):
         """
       Creates a RQSSplineRealNVP layer
 
@@ -203,12 +258,18 @@ class RQSSplineRealNVP(tf.keras.layers.Layer):
         Dictionary of keyword arguments for SplineBijector.
       batch_norm : bool, default False
         Whether or not to apply batch normalization between blocks.
+      before_flow_transform : tfp.bijectors.Bijector, default tfp.bijectors.Identity()
+          A tfp.bijectors object to apply before the flow (most likely to transform to flow domain)
+      after_flow_transform : tfp.bijectors.Bijector, default tfp.bijectors.Identity()
+          A tfp.bijectors object to apply after the flow (most likely to shift to now domain)
     """
         super(RQSSplineRealNVP, self).__init__(name=name, **kwargs)
         self.num_blocks = num_blocks
         self.rqs_params = rqs_params
         self.batch_norm = batch_norm
         self.conditional = False
+        self.before_flow_transform = before_flow_transform
+        self.after_flow_transform = after_flow_transform
 
     def build(self, input_shape):
         self.data_dim = input_shape[-1]
@@ -216,7 +277,7 @@ class RQSSplineRealNVP(tf.keras.layers.Layer):
         # Want to create a spline bijector based RealNVP bijector for each block
         # (num_blocks should be at least 2 to be useful, so should add warning at some point)
         # In case data_dim is not even, figure out lengths of split
-        block_list = []
+        block_list = [self.before_flow_transform]
 
         for i in range(self.num_blocks):
             # If data is only length one, all masked and no transform
@@ -244,6 +305,8 @@ class RQSSplineRealNVP(tf.keras.layers.Layer):
                     name='block_%i' % i,
                     bijector_fn=SplineBijector(num_transform, **self.rqs_params),
                 ))
+
+        block_list.append(self.after_flow_transform)
 
         # Put together RealNVP blocks into chained bijector
         # Note that chain operates in reverse order
@@ -476,7 +539,15 @@ class RQSSplineMAF(tf.keras.layers.Layer):
       Whether or not conditional inputs are accepted.
   """
 
-    def __init__(self, num_blocks=2, order_seed=None, rqs_params={}, batch_norm=False, name='rqs_MAF', **kwargs):
+    def __init__(self,
+                 num_blocks=2,
+                 order_seed=None,
+                 rqs_params={},
+                 batch_norm=False,
+                 before_flow_transform=tfp.bijectors.Identity(),
+                 after_flow_transform=tfp.bijectors.Identity(),
+                 name='rqs_MAF',
+                 **kwargs):
         """
       Creates RQSSplineMAF layer instance
 
@@ -491,7 +562,11 @@ class RQSSplineMAF(tf.keras.layers.Layer):
       rqs_params : dict, default {}
           Dictionary of keyword arguments for MaskedSplineBijector
       batch_norm : bool, default False
-        Whether or not to apply batch normalization between blocks
+          Whether or not to apply batch normalization between blocks
+      before_flow_transform : tfp.bijectors.Bijector, default tfp.bijectors.Identity()
+          A tfp.bijectors object to apply before the flow (most likely to transform to flow domain)
+      after_flow_transform : tfp.bijectors.Bijector, default tfp.bijectors.Identity()
+          A tfp.bijectors object to apply after the flow (most likely to shift to now domain)
     """
         super(RQSSplineMAF, self).__init__(name=name, **kwargs)
         self.num_blocks = num_blocks
@@ -499,12 +574,14 @@ class RQSSplineMAF(tf.keras.layers.Layer):
         self.rqs_params = rqs_params
         self.batch_norm = batch_norm
         self.conditional = rqs_params.get('conditional', False)
+        self.before_flow_transform = before_flow_transform
+        self.after_flow_transform = after_flow_transform
 
     def build(self, input_shape):
         self.data_dim = input_shape[-1]
 
         # Want to create an MAF bijector with a spline bijector for each block
-        block_list = []
+        block_list = [self.before_flow_transform]
 
         # Set up random number generator for order
         rng = np.random.default_rng(self.order_seed)
@@ -540,6 +617,8 @@ class RQSSplineMAF(tf.keras.layers.Layer):
                         name='block_%i' % i,
                     ))
 
+        block_list.append(self.after_flow_transform)
+
         # Put together MAF blocks into chained bijector
         # Note that chain operates in reverse order
         self.chain = tfp.bijectors.Chain(block_list[::-1])
@@ -571,10 +650,10 @@ class RQSSplineMAF(tf.keras.layers.Layer):
         # keys will be block names and values will be dictionary with value of conditional_input
         cond_dict = {}
         for bij in self.chain.bijectors:
-            if isinstance(bij, tfp.bijectors.BatchNormalization):
-                bij.training = training
-            else:
+            if isinstance(bij, tfp.bijectors.MaskedAutoregressiveFlow):
                 cond_dict[bij.name] = {'conditional_input': conditional_input}
+            elif isinstance(bij, tfp.bijectors.BatchNormalization):
+                bij.training = training
 
         # If the input to a bijector is a tfp.distributions object, outputs a TransformedDistribution object
         # If input is tensor, outputs transformed tensor, so works either way as a layer
