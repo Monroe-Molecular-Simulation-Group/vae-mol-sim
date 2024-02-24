@@ -170,7 +170,7 @@ class TestRQSSplineRealNVP:
         f = self.flow_class()
         no_train_sample = f(normal_sample)
         train_sample = f(normal_sample, training=True)
-        assert len(f.chain.bijectors) == f.num_blocks + 2
+        assert len(f.chain.bijectors) == f.num_blocks
         assert no_train_sample.shape == normal_sample.shape
         assert not np.all(no_train_sample == normal_sample)
         np.testing.assert_array_equal(train_sample, no_train_sample)
@@ -191,7 +191,7 @@ class TestRQSSplineRealNVP:
         del train_sample
         assert np.all(train_bool)
         assert f.num_blocks == 4
-        assert len(f.chain.bijectors) == (2 * f.num_blocks - 1 + 2)
+        assert len(f.chain.bijectors) == (2 * f.num_blocks - 1)
         assert no_train_sample.shape == normal_sample.shape
         assert not np.all(no_train_sample == normal_sample)
 
@@ -216,6 +216,29 @@ class TestRQSSplineRealNVP:
         _ = t_dist.log_prob(new_sample)  # And calculate a log-probability
         assert isinstance(t_dist, tfp.distributions.Distribution)  # Make sure it's a distribution
         assert hasattr(t_dist, "bijector")  # Make sure it has a transform
+
+    def test_before_after_transforms(self, vonmises_dist, vonmises_sample, normal_sample):
+        # Test just with identity transformations before and after
+        f = self.flow_class(
+            rqs_params={'bin_range': [-np.pi, np.pi]},
+            before_flow_transform=tfp.bijectors.Identity(),
+            after_flow_transform=tfp.bijectors.Identity(),
+        )
+        t_sample = f(vonmises_sample)
+        assert len(f.chain.bijectors) == f.num_blocks + 2
+        assert t_sample.shape == vonmises_sample.shape
+        # Now test with transformation from one space to another and back to another
+        b_trans = flows.make_domain_transform([[-10.0, 10.0]] * normal_sample.shape[-1], [-np.pi, np.pi])
+        a_trans = flows.make_domain_transform([[0.0, 1.0]] * normal_sample.shape[-1], [-np.pi, np.pi],
+                                              from_target=True)
+        f_ba = self.flow_class(
+            rqs_params={'bin_range': [-np.pi, np.pi]},
+            before_flow_transform=b_trans,
+            after_flow_transform=a_trans,
+        )
+        t_sample_ba = f_ba(normal_sample)
+        assert 0.0 <= np.min(t_sample_ba)
+        assert 1.0 >= np.max(t_sample_ba)
 
 
 class TestRQSSplineMAF(TestRQSSplineRealNVP):

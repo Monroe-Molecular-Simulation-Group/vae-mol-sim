@@ -237,14 +237,18 @@ class RQSSplineRealNVP(tf.keras.layers.Layer):
       Whether or not batch normalization layers are placed between spline bijectors.
   conditional : bool
       Whether or not conditional inputs are accepted. This is always False for this class.
+  before_flow_transform : tfp.bijectors.Bijector
+      Transformation before the flow
+  after_flow_transform : tfp.bijectors.Bijector
+      Transformation after the flow
   """
 
     def __init__(self,
                  num_blocks=4,
                  rqs_params={},
                  batch_norm=False,
-                 before_flow_transform=tfp.bijectors.Identity(),
-                 after_flow_transform=tfp.bijectors.Identity(),
+                 before_flow_transform=None,
+                 after_flow_transform=None,
                  name='rqs_realNVP',
                  **kwargs):
         """
@@ -258,16 +262,19 @@ class RQSSplineRealNVP(tf.keras.layers.Layer):
         Dictionary of keyword arguments for SplineBijector.
       batch_norm : bool, default False
         Whether or not to apply batch normalization between blocks.
-      before_flow_transform : tfp.bijectors.Bijector, default tfp.bijectors.Identity()
+      before_flow_transform : tfp.bijectors.Bijector, default None
           A tfp.bijectors object to apply before the flow (most likely to transform to flow domain)
-      after_flow_transform : tfp.bijectors.Bijector, default tfp.bijectors.Identity()
-          A tfp.bijectors object to apply after the flow (most likely to shift to now domain)
+      after_flow_transform : tfp.bijectors.Bijector, default None
+          A tfp.bijectors object to apply after the flow (most likely to shift to new domain)
     """
         super(RQSSplineRealNVP, self).__init__(name=name, **kwargs)
         self.num_blocks = num_blocks
         self.rqs_params = rqs_params
         self.batch_norm = batch_norm
         self.conditional = False
+        # Most elegant to set transforms (before/after) to tfp.bijectors.Identity() by default
+        # However, that is not back-compatible, so setting to None, which just makes testing harder
+        # (but avoids an inability to load models trained prior to this)
         self.before_flow_transform = before_flow_transform
         self.after_flow_transform = after_flow_transform
 
@@ -277,7 +284,9 @@ class RQSSplineRealNVP(tf.keras.layers.Layer):
         # Want to create a spline bijector based RealNVP bijector for each block
         # (num_blocks should be at least 2 to be useful, so should add warning at some point)
         # In case data_dim is not even, figure out lengths of split
-        block_list = [self.before_flow_transform]
+        block_list = []
+        if self.before_flow_transform is not None:
+            block_list.append(self.before_flow_transform)
 
         for i in range(self.num_blocks):
             # If data is only length one, all masked and no transform
@@ -306,7 +315,8 @@ class RQSSplineRealNVP(tf.keras.layers.Layer):
                     bijector_fn=SplineBijector(num_transform, **self.rqs_params),
                 ))
 
-        block_list.append(self.after_flow_transform)
+        if self.after_flow_transform is not None:
+            block_list.append(self.after_flow_transform)
 
         # Put together RealNVP blocks into chained bijector
         # Note that chain operates in reverse order
@@ -537,6 +547,10 @@ class RQSSplineMAF(tf.keras.layers.Layer):
       Whether or not batch normalization layers are placed between spline bijectors.
   conditional : bool
       Whether or not conditional inputs are accepted.
+  before_flow_transform : tfp.bijectors.Bijector
+      Transformation before the flow
+  after_flow_transform : tfp.bijectors.Bijector
+      Transformation after the flow
   """
 
     def __init__(self,
@@ -544,8 +558,8 @@ class RQSSplineMAF(tf.keras.layers.Layer):
                  order_seed=None,
                  rqs_params={},
                  batch_norm=False,
-                 before_flow_transform=tfp.bijectors.Identity(),
-                 after_flow_transform=tfp.bijectors.Identity(),
+                 before_flow_transform=None,
+                 after_flow_transform=None,
                  name='rqs_MAF',
                  **kwargs):
         """
@@ -566,7 +580,7 @@ class RQSSplineMAF(tf.keras.layers.Layer):
       before_flow_transform : tfp.bijectors.Bijector, default tfp.bijectors.Identity()
           A tfp.bijectors object to apply before the flow (most likely to transform to flow domain)
       after_flow_transform : tfp.bijectors.Bijector, default tfp.bijectors.Identity()
-          A tfp.bijectors object to apply after the flow (most likely to shift to now domain)
+          A tfp.bijectors object to apply after the flow (most likely to shift to new domain)
     """
         super(RQSSplineMAF, self).__init__(name=name, **kwargs)
         self.num_blocks = num_blocks
@@ -574,6 +588,9 @@ class RQSSplineMAF(tf.keras.layers.Layer):
         self.rqs_params = rqs_params
         self.batch_norm = batch_norm
         self.conditional = rqs_params.get('conditional', False)
+        # Most elegant to set transforms (before/after) to tfp.bijectors.Identity() by default
+        # However, that is not back-compatible, so setting to None, which just makes testing harder
+        # (but avoids an inability to load models trained prior to this)
         self.before_flow_transform = before_flow_transform
         self.after_flow_transform = after_flow_transform
 
@@ -581,7 +598,9 @@ class RQSSplineMAF(tf.keras.layers.Layer):
         self.data_dim = input_shape[-1]
 
         # Want to create an MAF bijector with a spline bijector for each block
-        block_list = [self.before_flow_transform]
+        block_list = []
+        if self.before_flow_transform is not None:
+            block_list.append(self.before_flow_transform)
 
         # Set up random number generator for order
         rng = np.random.default_rng(self.order_seed)
@@ -617,7 +636,8 @@ class RQSSplineMAF(tf.keras.layers.Layer):
                         name='block_%i' % i,
                     ))
 
-        block_list.append(self.after_flow_transform)
+        if self.after_flow_transform is not None:
+            block_list.append(self.after_flow_transform)
 
         # Put together MAF blocks into chained bijector
         # Note that chain operates in reverse order
