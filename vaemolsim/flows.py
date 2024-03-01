@@ -50,9 +50,9 @@ def make_domain_transform(domain_list, target, from_target=False):
 
     # Create blockwise bijectors to simultaneously apply to all domains
     # (for shift, scale and shift)
-    bij_shift1 = tfp.bijectors.Blockwise([tfp.bijectors.Shift(s1) for s1 in shift1])
-    bij_scale = tfp.bijectors.Blockwise([tfp.bijectors.Scale(s) for s in scale])
-    bij_shift2 = tfp.bijectors.Blockwise([tfp.bijectors.Shift(s2) for s2 in shift2])
+    bij_shift1 = tfp.bijectors.Shift(shift1)
+    bij_scale = tfp.bijectors.Scale(scale)
+    bij_shift2 = tfp.bijectors.Shift(shift2)
 
     # Combine together into a chain, noting that chain applies bijectors in reverse order
     bij_chain = tfp.bijectors.Chain(bijectors=[bij_shift2, bij_scale, bij_shift1])
