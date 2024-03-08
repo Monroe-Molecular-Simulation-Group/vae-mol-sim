@@ -170,7 +170,7 @@ class TestVAE:
         decoder = models.MappingToDistribution(decoder_dist, name='decoder')
         # For simple prior with no flow, just use a distribution lambda
         prior = tfp.layers.DistributionLambda(make_distribution_fn=lambda t: tfp.distributions.Independent(
-            tfp.distributions.Normal(loc=tf.zeros((self.zdim, )), scale=tf.zeros((self.zdim, ))),
+            tfp.distributions.Normal(loc=tf.zeros((self.zdim, )), scale=tf.ones((self.zdim, ))),
             reinterpreted_batch_ndims=1))
         vae = models.VAE(encoder, decoder, prior)
         out = vae(self.x)
