@@ -5,6 +5,10 @@ Defines classes and methods for performing VAE-based MC.
 import numpy as np
 
 
+# To make more general, can consider passing encoder, prior, and decoder distributions separately
+# (instead of full VAE)
+# Requirements will be that each handles a experimental_sample_and_log_prop method
+# (so could just be tfp.distribution objects)
 class MCMC(object):
     """
     Markov Chain Monte Carlo simulation object using a VAE for generating moves.
@@ -125,6 +129,7 @@ class MCMC(object):
 
         return new_configs, new_energies
 
+    # Consider adding verbosity option so know how far it's run
     def run(self, configs, energies=None, n_steps=1):
         """
         Runs MCMC for specified number of steps.
