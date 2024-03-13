@@ -1,0 +1,21 @@
+# A bare-bones installation for running the examples and building documentation
+name: vae-mol-sim
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python<=3.11
+  - numpy
+  - matplotlib
+  - jupyter
+  - jupyterlab
+  - ipykernel
+  - ipywidgets=7
+  - sphinx<7.0
+  - sphinx_rtd_theme
+  - pip
+  - pip:
+      - tensorflow<=2.15
+      - tensorflow-probability<=0.23
+      - geometric-algebra-attention

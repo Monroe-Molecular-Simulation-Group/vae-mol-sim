@@ -1,13 +1,13 @@
 # An example working environment recommended for projects using this package
 # This file is used to set up environments for the example notebooks and scripts
 # See test_env.yaml for bare-bones dependencies to only run and test the core code
-name: vae-mol-sim
+name: example-vae-mol-sim
 
 channels:
   - conda-forge
 
 dependencies:
-  - python<=3.10
+  - python<=3.11
   - numpy
   - scipy
   - matplotlib
@@ -24,6 +24,6 @@ dependencies:
   - sphinx_rtd_theme
   - pip
   - pip:
-      - tensorflow
-      - tensorflow-probability
+      - tensorflow<=2.15
+      - tensorflow-probability<=0.23
       - geometric-algebra-attention
