@@ -48,7 +48,7 @@ That should open a web browser with all files in the directory shown. You can op
 ```
 git clone https://git.uark.edu/jm217/vae-mol-sim.git
 cd vae_mol_sim
-conda env create -f devtools/conda-envs/example_env.yaml
+conda env create -f devtools/conda-envs/basic_example_env.yaml
 conda activate vae-mol-sim
 pip install ./ --no-deps
 ```
