@@ -521,7 +521,7 @@ class AttentionBlock(tf.keras.layers.Layer):
             reduce=False,
             merge_fun='concat',
             join_fun='concat',
-            rank=3,
+            rank=2,
         )
         self.nonlinearity = tf.keras.models.Sequential([
             tf.keras.layers.Dense(self.hidden_dim),
@@ -643,7 +643,7 @@ class ParticleEmbedding(tf.keras.layers.Layer):
             reduce=True,
             merge_fun='concat',
             join_fun='concat',
-            rank=3,
+            rank=2,
         )
 
     def call(self, coords, particle_info):

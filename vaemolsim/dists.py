@@ -17,6 +17,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 
 from tensorflow_probability.python.internal import distribution_util as dist_util
+from tensorflow_probability.python.internal import dtype_util
 
 
 # This probably should not be a class...
@@ -59,8 +60,15 @@ def make_param_transform(dist_class=None, transform_fn=tf.identity):
 
             def _fn(x):
                 return {
-                    'loc': props_dict['loc'].default_constraining_bijector_fn()(tf.math.atan2(x[..., 0], x[..., 1])),
-                    'concentration': props_dict['concentration'].default_constraining_bijector_fn()(x[..., 2])
+                    'loc':
+                    props_dict['loc'].default_constraining_bijector_fn()(tf.math.atan2(x[..., 0], x[..., 1])),
+                    # 'concentration': props_dict['concentration'].default_constraining_bijector_fn()(x[..., 2])
+                    # Default transform of SoftPlus does not prevent overflows if concentration becomes large
+                    # To avoid, apply SoftClip with upper limit being largest quantity in sampling procedure
+                    'concentration':
+                    tfp.bijectors.SoftClip(low=dtype_util.eps(tf.float32),
+                                           high=tf.cast(tf.math.sqrt(dtype_util.max(tf.float32)) / 2.0,
+                                                        tf.float32))(x[..., 2])
                 }
 
         else:
